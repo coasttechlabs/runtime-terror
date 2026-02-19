@@ -1,0 +1,142 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Runtime Terror - Battlebot Arena</title>
+    <style>
+        :root {
+            --primary: #00ff41; /* Matrix Green */
+            --secondary: #ff0055; /* Cyber Red */
+            --bg: #0d0d0d;
+            --text: #e0e0e0;
+            --panel: #1a1a1a;
+            --border: #333;
+        }
+        body {
+            font-family: 'Courier New', Courier, monospace;
+            background-color: var(--bg);
+            color: var(--text);
+            margin: 0;
+            display: flex;
+            flex-direction: column;
+            min-height: 100vh;
+        }
+        header {
+            background-color: var(--panel);
+            padding: 1rem 2rem;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-bottom: 1px solid var(--primary);
+            box-shadow: 0 0 10px rgba(0, 255, 65, 0.1);
+        }
+        h1 { margin: 0; color: var(--primary); text-transform: uppercase; letter-spacing: 2px; font-size: 1.5rem; }
+        nav a {
+            color: var(--text);
+            text-decoration: none;
+            margin-left: 20px;
+            font-weight: bold;
+            transition: color 0.2s;
+        }
+        nav a:hover { color: var(--primary); }
+        
+        .hero {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            text-align: center;
+            padding: 4rem 2rem;
+            background: radial-gradient(circle at center, #1a1a1a 0%, #0d0d0d 100%);
+        }
+        .hero h2 { font-size: 3rem; margin-bottom: 1rem; text-shadow: 0 0 5px var(--primary); }
+        .hero p { font-size: 1.2rem; max-width: 600px; margin-bottom: 2.5rem; color: #aaa; line-height: 1.6; }
+        
+        .cta-button {
+            background-color: transparent;
+            color: var(--primary);
+            border: 2px solid var(--primary);
+            padding: 1rem 2rem;
+            font-size: 1.2rem;
+            cursor: pointer;
+            text-transform: uppercase;
+            font-family: inherit;
+            transition: all 0.3s ease;
+            text-decoration: none;
+            font-weight: bold;
+        }
+        .cta-button:hover {
+            background-color: var(--primary);
+            color: var(--bg);
+            box-shadow: 0 0 20px var(--primary);
+        }
+
+        .features {
+            display: flex;
+            flex-wrap: wrap;
+            justify-content: center;
+            gap: 2rem;
+            padding: 4rem 2rem;
+            background-color: var(--panel);
+            border-top: 1px solid var(--border);
+        }
+        .feature-card {
+            border: 1px solid var(--border);
+            padding: 2rem;
+            width: 300px;
+            text-align: center;
+            background: var(--bg);
+        }
+        .feature-card h3 { color: var(--secondary); margin-top: 0; }
+
+        footer {
+            text-align: center;
+            padding: 1.5rem;
+            border-top: 1px solid var(--border);
+            font-size: 0.8rem;
+            color: #666;
+        }
+    </style>
+</head>
+<body>
+    <header>
+        <h1>Runtime Terror</h1>
+        <nav>
+            <a href="#">Home</a>
+            <a href="#">Docs</a>
+            <a href="#">Leaderboard</a>
+            <a href="#" id="login-btn">Login</a>
+        </nav>
+    </header>
+
+    <section class="hero">
+        <h2>Code. Compile. Conquer.</h2>
+        <p>Program your autonomous battlebot in <strong>JavaScript</strong> or <strong>Python</strong>. Upload your script, optimize your algorithms, and watch your creation dominate the arena.</p>
+        <a href="#" class="cta-button" onclick="alert('Game interface loading...')">Enter the Arena</a>
+    </section>
+
+    <section class="features">
+        <div class="feature-card">
+            <h3>Polyglot Warfare</h3>
+            <p>Write your bot logic in JS or Python. The backend handles the execution safely.</p>
+        </div>
+        <div class="feature-card">
+            <h3>Real-time Simulation</h3>
+            <p>Watch battles unfold live in the browser with our high-performance renderer.</p>
+        </div>
+        <div class="feature-card">
+            <h3>Global Rankings</h3>
+            <p>Defeat opponents to climb the Elo ladder and claim the title of Runtime Terror.</p>
+        </div>
+    </section>
+
+    <footer>
+        &copy; 2026 Runtime Terror. All systems operational.
+    </footer>
+
+    <!-- Linked your existing game logic file -->
+    <script type="module" src="./game.js"></script>
+</body>
+</html>

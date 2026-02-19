@@ -1,0 +1,389 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Runtime Terror - Login</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Special+Elite&family=Share+Tech+Mono&display=swap" rel="stylesheet" />
+  <style>
+    :root {
+      --bg: #0a0d11;
+      --panel: #12161c;
+      --line: #1cff7a;
+      --line-soft: rgba(28, 255, 122, 0.45);
+      --text: #d9dce2;
+      --muted: #8c93a3;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      font-family: "Share Tech Mono", monospace;
+      color: var(--text);
+      background:
+        radial-gradient(circle at 20% 8%, rgba(34, 66, 45, 0.25), transparent 46%),
+        repeating-linear-gradient(90deg, rgba(255, 255, 255, 0.01), rgba(255, 255, 255, 0.01) 2px, transparent 2px, transparent 36px),
+        linear-gradient(180deg, #0f1319 0%, #080b0f 100%);
+      display: flex;
+      flex-direction: column;
+    }
+
+    .site-header {
+      border-bottom: 2px solid var(--line);
+      padding: 18px 38px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+      background: rgba(8, 11, 15, 0.78);
+      backdrop-filter: blur(4px);
+    }
+
+    .brand {
+      margin: 0;
+      color: var(--line);
+      font-family: "Special Elite", monospace;
+      letter-spacing: 2px;
+      font-size: clamp(1.4rem, 2.7vw, 2.2rem);
+      text-shadow: 0 0 9px rgba(141, 255, 189, 0.55);
+    }
+
+    .nav {
+      display: flex;
+      gap: 34px;
+      flex-wrap: wrap;
+    }
+
+    .nav a {
+      color: #f2f2f2;
+      text-decoration: none;
+      font-size: clamp(1rem, 1.6vw, 1.45rem);
+      font-family: "Special Elite", monospace;
+      opacity: 0.92;
+      transition: opacity 140ms ease, text-shadow 140ms ease;
+    }
+
+    .nav a:hover {
+      opacity: 1;
+      text-shadow: 0 0 8px rgba(141, 255, 189, 0.38);
+    }
+
+    .card {
+      margin: 52px auto 30px;
+      width: min(760px, calc(100% - 24px));
+      background: var(--panel);
+      border: 2px solid var(--line-soft);
+      box-shadow: 0 0 0 1px rgba(28, 255, 122, 0.18), 0 12px 40px rgba(0, 0, 0, 0.42);
+      overflow: hidden;
+      animation: fade-in 380ms ease-out;
+    }
+
+    .card-inner {
+      padding: 34px 28px 30px;
+    }
+
+    h1 {
+      margin: 0 0 24px;
+      text-align: center;
+      letter-spacing: 2px;
+      font-size: clamp(2rem, 5vw, 2.75rem);
+      font-family: "Special Elite", monospace;
+      color: var(--line);
+      text-shadow: 0 0 14px rgba(141, 255, 189, 0.7);
+    }
+
+    .subtitle {
+      margin: 0 auto 28px;
+      max-width: 560px;
+      text-align: center;
+      color: #a5aabc;
+      line-height: 1.5;
+      font-size: clamp(1rem, 2.1vw, 1.28rem);
+    }
+
+    form {
+      width: min(560px, 100%);
+      margin: 0 auto;
+      display: grid;
+      gap: 18px;
+    }
+
+    .input-wrap {
+      border: 2px solid rgba(188, 199, 224, 0.44);
+      background: rgba(5, 7, 10, 0.45);
+      transition: border-color 120ms ease, box-shadow 120ms ease;
+    }
+
+    .input-wrap:focus-within {
+      border-color: var(--line);
+      box-shadow: 0 0 0 2px rgba(28, 255, 122, 0.2);
+    }
+
+    input {
+      width: 100%;
+      border: 0;
+      padding: 16px 14px;
+      font-size: 1.15rem;
+      outline: none;
+      font-family: inherit;
+      background: transparent;
+      color: #e4e9f0;
+    }
+
+    input::placeholder {
+      color: var(--muted);
+      letter-spacing: 0.3px;
+    }
+
+    .actions {
+      border-top: 2px solid var(--line-soft);
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+    }
+
+    .social {
+      border-top: 2px solid var(--line-soft);
+      display: grid;
+      grid-template-columns: 1fr;
+    }
+
+    button {
+      border: 0;
+      border-right: 2px solid var(--line-soft);
+      padding: 18px 10px;
+      font-size: 1.15rem;
+      font-family: inherit;
+      letter-spacing: 1px;
+      text-transform: uppercase;
+      background: transparent;
+      color: #e6e9ee;
+      cursor: pointer;
+      transition: background-color 150ms ease, color 150ms ease, transform 120ms ease, text-shadow 150ms ease;
+    }
+
+    button:last-child {
+      border-right: 0;
+    }
+
+    .primary {
+      color: var(--line);
+      text-shadow: 0 0 8px rgba(141, 255, 189, 0.5);
+    }
+
+    .primary:hover {
+      background: rgba(28, 255, 122, 0.1);
+    }
+
+    .secondary:hover {
+      background: rgba(255, 255, 255, 0.05);
+      color: #f9fcff;
+    }
+
+    .social-btn {
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      font-size: 1rem;
+      color: #9aa2b1;
+      text-shadow: none;
+      background: rgba(255, 255, 255, 0.03);
+      font-family: inherit;
+      border-right: 0;
+      padding: 16px 8px;
+      cursor: not-allowed;
+    }
+
+    button:active {
+      transform: translateY(1px);
+    }
+
+    @media (max-width: 640px) {
+      .site-header {
+        padding: 16px 14px;
+      }
+
+      .nav {
+        gap: 12px;
+      }
+
+      .nav a {
+        font-size: 0.95rem;
+      }
+
+      .card {
+        margin-top: 24px;
+      }
+
+      .card-inner {
+        padding: 24px 14px 18px;
+      }
+
+      form {
+        gap: 12px;
+      }
+
+      button {
+        font-size: 0.88rem;
+        padding: 15px 8px;
+      }
+    }
+
+    @keyframes fade-in {
+      from {
+        opacity: 0;
+        transform: translateY(10px);
+      }
+      to {
+        opacity: 1;
+        transform: translateY(0);
+      }
+    }
+  </style>
+</head>
+<body>
+  <header class="site-header" aria-label="Primary navigation">
+    <h2 class="brand">RUNTIME TERROR</h2>
+    <nav class="nav">
+      <a href="./index.html">Home</a>
+      <a href="#">Docs</a>
+      <a href="#">Leaderboard</a>
+      <a href="./login.html">Login</a>
+    </nav>
+  </header>
+
+  <main class="card" aria-label="Login panel">
+    <div class="card-inner">
+      <h1>Login</h1>
+      <p class="subtitle">Sign in with your email and password to manage your bot and re-enter the arena.</p>
+
+      <form id="login-form">
+        <label class="input-wrap">
+          <input id="email" name="email" type="email" placeholder="Email" required />
+        </label>
+
+        <label class="input-wrap">
+          <input id="password" name="password" type="password" placeholder="Password" required />
+        </label>
+      </form>
+    </div>
+
+    <section class="actions" aria-label="Primary actions">
+      <button class="primary" type="submit" form="login-form">Login</button>
+      <button class="secondary" id="signup-button" type="button">Sign Up</button>
+    </section>
+
+    <section class="social" aria-label="Social sign in options">
+      <button class="social-btn" type="button" disabled>In development</button>
+    </section>
+  </main>
+
+  <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-auth-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore-compat.js"></script>
+  <script>
+  const firebaseConfig = {
+    
+  };
+
+    if (!firebase.apps.length) {
+      firebase.initializeApp(firebaseConfig);
+    }
+
+    const auth = firebase.auth();
+    const db = firebase.firestore();
+    const USERS_COLLECTION = "users";
+
+    function todayDateKey() {
+      const now = new Date();
+      const year = now.getFullYear();
+      const month = String(now.getMonth() + 1).padStart(2, "0");
+      const day = String(now.getDate()).padStart(2, "0");
+      return `${year}-${month}-${day}`;
+    }
+
+    function dayDiff(fromDateString, toDateString) {
+      const from = new Date(`${fromDateString}T00:00:00`);
+      const to = new Date(`${toDateString}T00:00:00`);
+      const msPerDay = 24 * 60 * 60 * 1000;
+      return Math.floor((to.getTime() - from.getTime()) / msPerDay);
+    }
+
+    function getNextStreakValues(profile, today) {
+      const current = Number(profile.currentStreak || 0);
+      const longest = Number(profile.longeststreak || 0);
+      const lastActiveDate = profile.lastActiveDate;
+
+      if (!lastActiveDate) {
+        const next = 1;
+        return { currentStreak: next, longeststreak: Math.max(longest, next) };
+      }
+
+      const diff = dayDiff(lastActiveDate, today);
+      if (Number.isNaN(diff) || diff > 1) {
+        const next = 1;
+        return { currentStreak: next, longeststreak: Math.max(longest, next) };
+      }
+
+      if (diff === 1) {
+        const next = current + 1;
+        return { currentStreak: next, longeststreak: Math.max(longest, next) };
+      }
+
+      return { currentStreak: current || 1, longeststreak: Math.max(longest, current || 1) };
+    }
+
+    const form = document.getElementById("login-form");
+    const signupButton = document.getElementById("signup-button");
+
+    form.addEventListener("submit", async (event) => {
+      event.preventDefault();
+
+      const email = document.getElementById("email").value.trim();
+      const password = document.getElementById("password").value;
+
+      try {
+        const userCredential = await auth.signInWithEmailAndPassword(email, password);
+        const { user } = userCredential;
+        const userRef = db.collection(USERS_COLLECTION).doc(user.uid);
+        const snapshot = await userRef.get();
+        const today = todayDateKey();
+
+        const existing = snapshot.exists ? snapshot.data() : {};
+        const streak = getNextStreakValues(existing, today);
+        const fallbackUsername = user.displayName || (user.email ? user.email.split("@")[0] : "player");
+
+        await userRef.set({
+          accountCreated: true,
+          currentStreak: streak.currentStreak,
+          email: user.email || email,
+          lastActiveDate: today,
+          level: Number(existing.level || 1),
+          longeststreak: streak.longeststreak,
+          role: existing.role || "player",
+          rank: existing.rank || "unranked",
+          tutorialCompleted: Boolean(existing.tutorialCompleted || false),
+          username: existing.username || fallbackUsername,
+          updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+          createdAt: existing.createdAt || firebase.firestore.FieldValue.serverTimestamp()
+        }, { merge: true });
+
+        alert("Login successful.");
+        window.location.href = "./index.html";
+      } catch (error) {
+        console.error("Login error:", error);
+        alert(error.message || "Failed to log in.");
+      }
+    });
+
+    signupButton.addEventListener("click", () => {
+      window.location.href = "./signup.html";
+    });
+
+  </script>
+</body>
+</html>
