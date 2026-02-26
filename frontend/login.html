@@ -250,8 +250,8 @@
     <h2 class="brand">RUNTIME TERROR</h2>
     <nav class="nav">
       <a href="./index.html">Home</a>
-      <a href="#">Docs</a>
-      <a href="#">Leaderboard</a>
+      <a href="./index.html#docs">Docs</a>
+      <a href="./index.html#leaderboard">Leaderboard</a>
       <a href="./login.html">Login</a>
     </nav>
   </header>
@@ -261,7 +261,7 @@
       <h1>Login</h1>
       <p class="subtitle">Sign in with your email and password to manage your bot and re-enter the arena.</p>
 
-      <form id="login-form">
+      <form id="login-form" method="post" action="./login.html">
         <label class="input-wrap">
           <input id="email" name="email" type="email" placeholder="Email" required />
         </label>
@@ -282,107 +282,66 @@
     </section>
   </main>
 
-  <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
-  <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-auth-compat.js"></script>
-  <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore-compat.js"></script>
-  <script>
+  <script type="module">
+  import { initializeApp, getApps } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-app.js";
+  import { getAuth, signInWithEmailAndPassword } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-auth.js";
+  import { getFirestore, doc, setDoc, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore.js";
+
   const firebaseConfig = {
-    
+    apiKey: "AIzaSyAmSCkSrBjHqWe0ZA6li-WTSaB4vtm-tIk",
+    authDomain: "battle-bots-c6965.firebaseapp.com",
+    projectId: "battle-bots-c6965",
+    storageBucket: "battle-bots-c6965.firebasestorage.app",
+    messagingSenderId: "319178537337",
+    appId: "1:319178537337:web:4a33b0b6230cb25b7e97a8",
+    measurementId: "G-7PPN676K4X"
   };
+  const app = getApps().length ? getApps()[0] : initializeApp(firebaseConfig);
 
-    if (!firebase.apps.length) {
-      firebase.initializeApp(firebaseConfig);
+  const auth = getAuth(app);
+  const db = getFirestore(app);
+
+  const USERS_COLLECTION = "users";
+
+  function todayDateKey() {
+    const now = new Date();
+    const year = now.getFullYear();
+    const month = String(now.getMonth() + 1).padStart(2, "0");
+    const day = String(now.getDate()).padStart(2, "0");
+    return `${year}-${month}-${day}`;
+  }
+
+  const form = document.getElementById("login-form");
+  const signupButton = document.getElementById("signup-button");
+
+  form.addEventListener("submit", async (event) => {
+    event.preventDefault();
+
+    const email = document.getElementById("email").value.trim();
+    const password = document.getElementById("password").value;
+
+    try {
+      const cred = await signInWithEmailAndPassword(auth, email, password);
+      const user = cred.user;
+
+      // Optional: update last active + updatedAt on login
+      await setDoc(
+        doc(db, USERS_COLLECTION, user.uid),
+        { lastActiveDate: todayDateKey(), updatedAt: serverTimestamp() },
+        { merge: true }
+      );
+
+      alert("Logged in!");
+      window.location.href = "./profile-settings.html";
+    } catch (error) {
+      console.error("Login error:", error);
+      alert(error?.message || "Failed to log in.");
     }
+  });
 
-    const auth = firebase.auth();
-    const db = firebase.firestore();
-    const USERS_COLLECTION = "users";
-
-    function todayDateKey() {
-      const now = new Date();
-      const year = now.getFullYear();
-      const month = String(now.getMonth() + 1).padStart(2, "0");
-      const day = String(now.getDate()).padStart(2, "0");
-      return `${year}-${month}-${day}`;
-    }
-
-    function dayDiff(fromDateString, toDateString) {
-      const from = new Date(`${fromDateString}T00:00:00`);
-      const to = new Date(`${toDateString}T00:00:00`);
-      const msPerDay = 24 * 60 * 60 * 1000;
-      return Math.floor((to.getTime() - from.getTime()) / msPerDay);
-    }
-
-    function getNextStreakValues(profile, today) {
-      const current = Number(profile.currentStreak || 0);
-      const longest = Number(profile.longeststreak || 0);
-      const lastActiveDate = profile.lastActiveDate;
-
-      if (!lastActiveDate) {
-        const next = 1;
-        return { currentStreak: next, longeststreak: Math.max(longest, next) };
-      }
-
-      const diff = dayDiff(lastActiveDate, today);
-      if (Number.isNaN(diff) || diff > 1) {
-        const next = 1;
-        return { currentStreak: next, longeststreak: Math.max(longest, next) };
-      }
-
-      if (diff === 1) {
-        const next = current + 1;
-        return { currentStreak: next, longeststreak: Math.max(longest, next) };
-      }
-
-      return { currentStreak: current || 1, longeststreak: Math.max(longest, current || 1) };
-    }
-
-    const form = document.getElementById("login-form");
-    const signupButton = document.getElementById("signup-button");
-
-    form.addEventListener("submit", async (event) => {
-      event.preventDefault();
-
-      const email = document.getElementById("email").value.trim();
-      const password = document.getElementById("password").value;
-
-      try {
-        const userCredential = await auth.signInWithEmailAndPassword(email, password);
-        const { user } = userCredential;
-        const userRef = db.collection(USERS_COLLECTION).doc(user.uid);
-        const snapshot = await userRef.get();
-        const today = todayDateKey();
-
-        const existing = snapshot.exists ? snapshot.data() : {};
-        const streak = getNextStreakValues(existing, today);
-        const fallbackUsername = user.displayName || (user.email ? user.email.split("@")[0] : "player");
-
-        await userRef.set({
-          accountCreated: true,
-          currentStreak: streak.currentStreak,
-          email: user.email || email,
-          lastActiveDate: today,
-          level: Number(existing.level || 1),
-          longeststreak: streak.longeststreak,
-          role: existing.role || "player",
-          rank: existing.rank || "unranked",
-          tutorialCompleted: Boolean(existing.tutorialCompleted || false),
-          username: existing.username || fallbackUsername,
-          updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
-          createdAt: existing.createdAt || firebase.firestore.FieldValue.serverTimestamp()
-        }, { merge: true });
-
-        alert("Login successful.");
-        window.location.href = "./index.html";
-      } catch (error) {
-        console.error("Login error:", error);
-        alert(error.message || "Failed to log in.");
-      }
-    });
-
-    signupButton.addEventListener("click", () => {
-      window.location.href = "./signup.html";
-    });
+  signupButton.addEventListener("click", () => {
+    window.location.href = "./signup.html";
+  });
 
   </script>
 </body>
