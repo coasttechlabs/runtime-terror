@@ -215,6 +215,21 @@
       font-size: 0.95rem;
     }
 
+    .friends-status {
+      margin: 0 0 12px;
+      min-height: 20px;
+      color: var(--muted);
+      font-size: 0.95rem;
+    }
+
+    .friends-status.ok {
+      color: var(--line);
+    }
+
+    .friends-status.err {
+      color: #ff8f8f;
+    }
+
     .action-btn {
       border: 2px solid var(--line-soft);
       padding: 16px 10px;
@@ -356,19 +371,219 @@
 
       <section class="friends" aria-label="Add friends">
         <h2>Add Friends</h2>
+        <p class="friends-status" id="friends-status">Send a friend request by username or email.</p>
         <div class="friend-add">
           <label class="input-wrap">
-            <input type="text" placeholder="Friend username or email" />
+            <input id="friend-input" type="text" placeholder="Friend username or email" />
           </label>
-          <button class="action-btn primary" type="button">Add Friend</button>
+          <button id="add-friend-btn" class="action-btn primary" type="button">Add Friend</button>
         </div>
-        <div class="friend-list" aria-label="Current friends">
-          <span class="friend-chip">@bot_hunter</span>
-          <span class="friend-chip">@neon_runner</span>
-          <span class="friend-chip">@pixel_warrior</span>
-        </div>
+        <div class="friend-list" id="friend-list" aria-label="Pending friend requests"></div>
       </section>
     </section>
   </main>
+  <script type="module">
+    import { initializeApp, getApps } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-app.js";
+    import { getAuth, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-auth.js";
+    import { getFirestore, collection, doc, getDoc, getDocs, limit, query, serverTimestamp, setDoc, where } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore.js";
+
+    const firebaseConfig = {
+      apiKey: "AIzaSyAmSCkSrBjHqWe0ZA6li-WTSaB4vtm-tIk",
+      authDomain: "battle-bots-c6965.firebaseapp.com",
+      projectId: "battle-bots-c6965",
+      storageBucket: "battle-bots-c6965.firebasestorage.app",
+      messagingSenderId: "319178537337",
+      appId: "1:319178537337:web:4a33b0b6230cb25b7e97a8",
+      measurementId: "G-7PPN676K4X"
+    };
+
+    const USERS_COLLECTION = "users";
+    const FRIEND_REQUESTS_COLLECTION = "friendRequests";
+
+    const app = getApps().length ? getApps()[0] : initializeApp(firebaseConfig);
+    const auth = getAuth(app);
+    const db = getFirestore(app);
+
+    const friendInput = document.getElementById("friend-input");
+    const addFriendButton = document.getElementById("add-friend-btn");
+    const friendList = document.getElementById("friend-list");
+    const friendsStatus = document.getElementById("friends-status");
+
+    let currentUser = null;
+    let currentProfile = null;
+
+    function setStatus(message, type = "") {
+      friendsStatus.textContent = message;
+      friendsStatus.classList.remove("ok", "err");
+      if (type) {
+        friendsStatus.classList.add(type);
+      }
+    }
+
+    function requestPairId(uidA, uidB) {
+      return [uidA, uidB].sort().join("_");
+    }
+
+    function chip(text) {
+      const span = document.createElement("span");
+      span.className = "friend-chip";
+      span.textContent = text;
+      return span;
+    }
+
+    async function findUserByIdentifier(identifier) {
+      const raw = identifier.trim();
+      if (!raw) return null;
+
+      const usernameSnapshot = await getDocs(query(
+        collection(db, USERS_COLLECTION),
+        where("username", "==", raw),
+        limit(1)
+      ));
+      if (!usernameSnapshot.empty) {
+        return { uid: usernameSnapshot.docs[0].id, ...usernameSnapshot.docs[0].data() };
+      }
+
+      const normalizedEmail = raw.toLowerCase();
+      const emailSnapshot = await getDocs(query(
+        collection(db, USERS_COLLECTION),
+        where("email", "==", normalizedEmail),
+        limit(1)
+      ));
+      if (!emailSnapshot.empty) {
+        return { uid: emailSnapshot.docs[0].id, ...emailSnapshot.docs[0].data() };
+      }
+
+      if (normalizedEmail !== raw) {
+        const rawEmailSnapshot = await getDocs(query(
+          collection(db, USERS_COLLECTION),
+          where("email", "==", raw),
+          limit(1)
+        ));
+        if (!rawEmailSnapshot.empty) {
+          return { uid: rawEmailSnapshot.docs[0].id, ...rawEmailSnapshot.docs[0].data() };
+        }
+      }
+
+      return null;
+    }
+
+    async function loadPendingRequests() {
+      friendList.innerHTML = "";
+      if (!currentUser) return;
+
+      const outgoingSnap = await getDocs(query(
+        collection(db, FRIEND_REQUESTS_COLLECTION),
+        where("requesterUid", "==", currentUser.uid)
+      ));
+      const incomingSnap = await getDocs(query(
+        collection(db, FRIEND_REQUESTS_COLLECTION),
+        where("recipientUid", "==", currentUser.uid)
+      ));
+
+      const outgoingPending = outgoingSnap.docs
+        .map((entry) => entry.data())
+        .filter((entry) => entry.status === "pending")
+        .map((entry) => chip("Sent: @" + (entry.recipientUsername || "unknown")));
+
+      const incomingPending = incomingSnap.docs
+        .map((entry) => entry.data())
+        .filter((entry) => entry.status === "pending")
+        .map((entry) => chip("Incoming: @" + (entry.requesterUsername || "unknown")));
+
+      const items = [...outgoingPending, ...incomingPending];
+      if (items.length === 0) {
+        friendList.appendChild(chip("No pending requests"));
+        return;
+      }
+      items.forEach((item) => friendList.appendChild(item));
+    }
+
+    addFriendButton.addEventListener("click", async () => {
+      const identifier = friendInput.value.trim();
+      if (!identifier) {
+        setStatus("Enter a username or email first.", "err");
+        return;
+      }
+      if (!currentUser || !currentProfile) {
+        setStatus("You must be logged in to add friends.", "err");
+        return;
+      }
+
+      addFriendButton.disabled = true;
+      setStatus("Checking user...");
+      try {
+        const target = await findUserByIdentifier(identifier);
+        if (!target) {
+          setStatus("User not found.", "err");
+          return;
+        }
+        if (target.uid === currentUser.uid) {
+          setStatus("You cannot send a request to yourself.", "err");
+          return;
+        }
+
+        const pairId = requestPairId(currentUser.uid, target.uid);
+        const requestRef = doc(db, FRIEND_REQUESTS_COLLECTION, pairId);
+        const existingRequest = await getDoc(requestRef);
+
+        if (existingRequest.exists()) {
+          const data = existingRequest.data();
+          if (data.status === "accepted") {
+            setStatus("You are already friends.", "err");
+            return;
+          }
+          if (data.status === "pending") {
+            if (data.requesterUid === currentUser.uid) {
+              setStatus("Friend request already sent.", "err");
+            } else {
+              setStatus("This user has already sent you a request.", "err");
+            }
+            return;
+          }
+        }
+
+        await setDoc(requestRef, {
+          requesterUid: currentUser.uid,
+          requesterUsername: currentProfile.username || currentUser.displayName || "player",
+          requesterEmail: currentUser.email || "",
+          recipientUid: target.uid,
+          recipientUsername: target.username || "player",
+          recipientEmail: target.email || "",
+          status: "pending",
+          createdAt: serverTimestamp(),
+          updatedAt: serverTimestamp()
+        }, { merge: true });
+
+        friendInput.value = "";
+        setStatus("Friend request sent.", "ok");
+        await loadPendingRequests();
+      } catch (error) {
+        console.error("Friend request error:", error);
+        setStatus(error?.message || "Failed to send friend request.", "err");
+      } finally {
+        addFriendButton.disabled = false;
+      }
+    });
+
+    onAuthStateChanged(auth, async (user) => {
+      if (!user) {
+        setStatus("Log in to send friend requests.", "err");
+        addFriendButton.disabled = true;
+        friendInput.disabled = true;
+        friendList.innerHTML = "";
+        friendList.appendChild(chip("Not logged in"));
+        return;
+      }
+
+      currentUser = user;
+      const me = await getDoc(doc(db, USERS_COLLECTION, user.uid));
+      currentProfile = me.exists() ? me.data() : {};
+      friendInput.disabled = false;
+      addFriendButton.disabled = false;
+      setStatus("Send a friend request by username or email.");
+      await loadPendingRequests();
+    });
+  </script>
 </body>
 </html>
