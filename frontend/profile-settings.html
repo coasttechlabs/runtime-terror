@@ -385,7 +385,7 @@
   <script type="module">
     import { initializeApp, getApps } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-app.js";
     import { getAuth, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-auth.js";
-    import { getFirestore, collection, doc, getDoc, getDocs, limit, query, serverTimestamp, setDoc, where } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore.js";
+    import { addDoc, getFirestore, collection, doc, getDoc, getDocs, limit, query, serverTimestamp, where } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore.js";
 
     const firebaseConfig = {
       apiKey: "AIzaSyAmSCkSrBjHqWe0ZA6li-WTSaB4vtm-tIk",
@@ -420,10 +420,6 @@
       }
     }
 
-    function requestPairId(uidA, uidB) {
-      return [uidA, uidB].sort().join("_");
-    }
-
     function chip(text) {
       const span = document.createElement("span");
       span.className = "friend-chip";
@@ -435,36 +431,32 @@
       const raw = identifier.trim();
       if (!raw) return null;
 
-      const usernameSnapshot = await getDocs(query(
-        collection(db, USERS_COLLECTION),
-        where("username", "==", raw),
-        limit(1)
-      ));
-      if (!usernameSnapshot.empty) {
-        return { uid: usernameSnapshot.docs[0].id, ...usernameSnapshot.docs[0].data() };
-      }
-
-      const normalizedEmail = raw.toLowerCase();
-      const emailSnapshot = await getDocs(query(
-        collection(db, USERS_COLLECTION),
-        where("email", "==", normalizedEmail),
-        limit(1)
-      ));
-      if (!emailSnapshot.empty) {
-        return { uid: emailSnapshot.docs[0].id, ...emailSnapshot.docs[0].data() };
-      }
-
-      if (normalizedEmail !== raw) {
-        const rawEmailSnapshot = await getDocs(query(
+      try {
+        const usernameSnapshot = await getDocs(query(
           collection(db, USERS_COLLECTION),
-          where("email", "==", raw),
+          where("username", "==", raw),
           limit(1)
         ));
-        if (!rawEmailSnapshot.empty) {
-          return { uid: rawEmailSnapshot.docs[0].id, ...rawEmailSnapshot.docs[0].data() };
+        if (!usernameSnapshot.empty) {
+          return { uid: usernameSnapshot.docs[0].id, ...usernameSnapshot.docs[0].data() };
         }
-      }
 
+        const normalizedEmail = raw.toLowerCase();
+        const emailSnapshot = await getDocs(query(
+          collection(db, USERS_COLLECTION),
+          where("email", "==", normalizedEmail),
+          limit(1)
+        ));
+        if (!emailSnapshot.empty) {
+          return { uid: emailSnapshot.docs[0].id, ...emailSnapshot.docs[0].data() };
+        }
+      } catch (error) {
+        if (error?.code === "permission-denied") {
+          // Fallback for strict rulesets: treat input as direct UID.
+          return { uid: raw };
+        }
+        throw error;
+      }
       return null;
     }
 
@@ -473,8 +465,15 @@
     async function usernameFor(uid) {
       if (!uid) return "unknown";
       if (usernameCache.has(uid)) return usernameCache.get(uid);
-      const snapshot = await getDoc(doc(db, USERS_COLLECTION, uid));
-      const name = snapshot.exists() ? (snapshot.data().username || uid) : uid;
+      let name = uid;
+      try {
+        const snapshot = await getDoc(doc(db, USERS_COLLECTION, uid));
+        name = snapshot.exists() ? (snapshot.data().username || uid) : uid;
+      } catch (error) {
+        if (error?.code !== "permission-denied") {
+          throw error;
+        }
+      }
       usernameCache.set(uid, name);
       return name;
     }
@@ -483,14 +482,24 @@
       friendList.innerHTML = "";
       if (!currentUser) return;
 
-      const outgoingSnap = await getDocs(query(
-        collection(db, FRIEND_REQUESTS_COLLECTION),
-        where("fromuserid", "==", currentUser.uid)
-      ));
-      const incomingSnap = await getDocs(query(
-        collection(db, FRIEND_REQUESTS_COLLECTION),
-        where("touserid", "==", currentUser.uid)
-      ));
+      let outgoingSnap;
+      let incomingSnap;
+      try {
+        outgoingSnap = await getDocs(query(
+          collection(db, FRIEND_REQUESTS_COLLECTION),
+          where("fromuserid", "==", currentUser.uid)
+        ));
+        incomingSnap = await getDocs(query(
+          collection(db, FRIEND_REQUESTS_COLLECTION),
+          where("touserid", "==", currentUser.uid)
+        ));
+      } catch (error) {
+        if (error?.code === "permission-denied") {
+          friendList.appendChild(chip("Requests hidden by Firestore rules"));
+          return;
+        }
+        throw error;
+      }
 
       const outgoingPending = await Promise.all(
         outgoingSnap.docs
@@ -538,32 +547,12 @@
           return;
         }
 
-        const pairId = requestPairId(currentUser.uid, target.uid);
-        const requestRef = doc(db, FRIEND_REQUESTS_COLLECTION, pairId);
-        const existingRequest = await getDoc(requestRef);
-
-        if (existingRequest.exists()) {
-          const data = existingRequest.data();
-          if (data.status === "accepted") {
-            setStatus("You are already friends.", "err");
-            return;
-          }
-          if (data.status === "pending") {
-            if (data.fromuserid === currentUser.uid) {
-              setStatus("Friend request already sent.", "err");
-            } else {
-              setStatus("This user has already sent you a request.", "err");
-            }
-            return;
-          }
-        }
-
-        await setDoc(requestRef, {
+        await addDoc(collection(db, FRIEND_REQUESTS_COLLECTION), {
           fromuserid: currentUser.uid,
           touserid: target.uid,
           status: "pending",
           createdAt: serverTimestamp()
-        }, { merge: true });
+        });
 
         friendInput.value = "";
         setStatus("Friend request sent.", "ok");
