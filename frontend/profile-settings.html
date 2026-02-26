@@ -468,28 +468,43 @@
       return null;
     }
 
+    const usernameCache = new Map();
+
+    async function usernameFor(uid) {
+      if (!uid) return "unknown";
+      if (usernameCache.has(uid)) return usernameCache.get(uid);
+      const snapshot = await getDoc(doc(db, USERS_COLLECTION, uid));
+      const name = snapshot.exists() ? (snapshot.data().username || uid) : uid;
+      usernameCache.set(uid, name);
+      return name;
+    }
+
     async function loadPendingRequests() {
       friendList.innerHTML = "";
       if (!currentUser) return;
 
       const outgoingSnap = await getDocs(query(
         collection(db, FRIEND_REQUESTS_COLLECTION),
-        where("requesterUid", "==", currentUser.uid)
+        where("fromuserid", "==", currentUser.uid)
       ));
       const incomingSnap = await getDocs(query(
         collection(db, FRIEND_REQUESTS_COLLECTION),
-        where("recipientUid", "==", currentUser.uid)
+        where("touserid", "==", currentUser.uid)
       ));
 
-      const outgoingPending = outgoingSnap.docs
-        .map((entry) => entry.data())
-        .filter((entry) => entry.status === "pending")
-        .map((entry) => chip("Sent: @" + (entry.recipientUsername || "unknown")));
+      const outgoingPending = await Promise.all(
+        outgoingSnap.docs
+          .map((entry) => entry.data())
+          .filter((entry) => entry.status === "pending")
+          .map(async (entry) => chip("Sent: @" + await usernameFor(entry.touserid)))
+      );
 
-      const incomingPending = incomingSnap.docs
-        .map((entry) => entry.data())
-        .filter((entry) => entry.status === "pending")
-        .map((entry) => chip("Incoming: @" + (entry.requesterUsername || "unknown")));
+      const incomingPending = await Promise.all(
+        incomingSnap.docs
+          .map((entry) => entry.data())
+          .filter((entry) => entry.status === "pending")
+          .map(async (entry) => chip("Incoming: @" + await usernameFor(entry.fromuserid)))
+      );
 
       const items = [...outgoingPending, ...incomingPending];
       if (items.length === 0) {
@@ -534,7 +549,7 @@
             return;
           }
           if (data.status === "pending") {
-            if (data.requesterUid === currentUser.uid) {
+            if (data.fromuserid === currentUser.uid) {
               setStatus("Friend request already sent.", "err");
             } else {
               setStatus("This user has already sent you a request.", "err");
@@ -544,15 +559,10 @@
         }
 
         await setDoc(requestRef, {
-          requesterUid: currentUser.uid,
-          requesterUsername: currentProfile.username || currentUser.displayName || "player",
-          requesterEmail: currentUser.email || "",
-          recipientUid: target.uid,
-          recipientUsername: target.username || "player",
-          recipientEmail: target.email || "",
+          fromuserid: currentUser.uid,
+          touserid: target.uid,
           status: "pending",
-          createdAt: serverTimestamp(),
-          updatedAt: serverTimestamp()
+          createdAt: serverTimestamp()
         }, { merge: true });
 
         friendInput.value = "";

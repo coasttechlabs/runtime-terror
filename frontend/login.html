@@ -312,6 +312,7 @@
   }
 
   const form = document.getElementById("login-form");
+  const signupButton = document.getElementById("signup-button");
 
   form.addEventListener("submit", async (event) => {
     event.preventDefault();
@@ -336,6 +337,10 @@
       console.error("Login error:", error);
       alert(error?.message || "Failed to log in.");
     }
+  });
+
+  signupButton.addEventListener("click", () => {
+    window.location.href = "./signup.html";
   });
 
   </script>
