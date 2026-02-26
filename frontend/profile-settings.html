@@ -1,0 +1,374 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Runtime Terror - Profile Settings</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Special+Elite&family=Share+Tech+Mono&display=swap" rel="stylesheet" />
+  <style>
+    :root {
+      --bg: #0a0d11;
+      --panel: #12161c;
+      --line: #1cff7a;
+      --line-soft: rgba(28, 255, 122, 0.45);
+      --text: #d9dce2;
+      --muted: #8c93a3;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      font-family: "Share Tech Mono", monospace;
+      color: var(--text);
+      background:
+        radial-gradient(circle at 20% 8%, rgba(34, 66, 45, 0.25), transparent 46%),
+        repeating-linear-gradient(90deg, rgba(255, 255, 255, 0.01), rgba(255, 255, 255, 0.01) 2px, transparent 2px, transparent 36px),
+        linear-gradient(180deg, #0f1319 0%, #080b0f 100%);
+      display: flex;
+      flex-direction: column;
+    }
+
+    .site-header {
+      border-bottom: 2px solid var(--line);
+      padding: 18px 38px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+      background: rgba(8, 11, 15, 0.78);
+      backdrop-filter: blur(4px);
+    }
+
+    .brand {
+      margin: 0;
+      color: var(--line);
+      font-family: "Special Elite", monospace;
+      letter-spacing: 2px;
+      font-size: clamp(1.4rem, 2.7vw, 2.2rem);
+      text-shadow: 0 0 9px rgba(141, 255, 189, 0.55);
+    }
+
+    .nav {
+      display: flex;
+      gap: 34px;
+      flex-wrap: wrap;
+    }
+
+    .nav a {
+      color: #f2f2f2;
+      text-decoration: none;
+      font-size: clamp(1rem, 1.6vw, 1.45rem);
+      font-family: "Special Elite", monospace;
+      opacity: 0.92;
+      transition: opacity 140ms ease, text-shadow 140ms ease;
+    }
+
+    .nav a:hover {
+      opacity: 1;
+      text-shadow: 0 0 8px rgba(141, 255, 189, 0.38);
+    }
+
+    .frame {
+      margin: 52px auto 30px;
+      width: min(1040px, calc(100% - 24px));
+      min-height: 600px;
+      background: var(--panel);
+      border: 2px solid var(--line-soft);
+      box-shadow: 0 0 0 1px rgba(28, 255, 122, 0.18), 0 12px 40px rgba(0, 0, 0, 0.42);
+      overflow: hidden;
+      display: grid;
+      grid-template-columns: 88px 1fr;
+      animation: fade-in 380ms ease-out;
+    }
+
+    .side {
+      border-right: 2px solid var(--line-soft);
+      display: grid;
+      grid-template-rows: 88px 88px 88px 1fr;
+    }
+
+    .side-btn {
+      border: 0;
+      border-bottom: 2px solid var(--line-soft);
+      background: transparent;
+      color: var(--muted);
+      cursor: pointer;
+      display: grid;
+      place-items: center;
+      transition: background-color 150ms ease, color 150ms ease;
+    }
+
+    .side-btn:hover {
+      background: rgba(255, 255, 255, 0.05);
+      color: #f9fcff;
+    }
+
+    .side-btn.active {
+      color: var(--line);
+      text-shadow: 0 0 8px rgba(141, 255, 189, 0.5);
+      background: rgba(28, 255, 122, 0.08);
+    }
+
+    .side-btn svg {
+      width: 32px;
+      height: 32px;
+      stroke: currentColor;
+      fill: none;
+      stroke-width: 1.8;
+    }
+
+    .content {
+      padding: 36px 40px 34px;
+    }
+
+    h1 {
+      margin: 0 0 30px;
+      letter-spacing: 2px;
+      font-size: clamp(2rem, 5vw, 2.75rem);
+      font-family: "Special Elite", monospace;
+      color: var(--line);
+      text-shadow: 0 0 14px rgba(141, 255, 189, 0.7);
+    }
+
+    .form-grid {
+      max-width: 720px;
+      display: grid;
+      gap: 20px;
+    }
+
+    .input-wrap {
+      border: 2px solid rgba(188, 199, 224, 0.44);
+      background: rgba(5, 7, 10, 0.45);
+      transition: border-color 120ms ease, box-shadow 120ms ease;
+    }
+
+    .input-wrap:focus-within {
+      border-color: var(--line);
+      box-shadow: 0 0 0 2px rgba(28, 255, 122, 0.2);
+    }
+
+    input {
+      width: 100%;
+      border: 0;
+      padding: 16px 14px;
+      font-size: 1.1rem;
+      outline: none;
+      font-family: inherit;
+      background: transparent;
+      color: #e4e9f0;
+    }
+
+    input::placeholder {
+      color: var(--muted);
+      letter-spacing: 0.3px;
+    }
+
+    .actions {
+      margin-top: 14px;
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 18px;
+      max-width: 520px;
+    }
+
+    .friends {
+      margin-top: 26px;
+      max-width: 720px;
+      border: 2px solid var(--line-soft);
+      padding: 18px;
+      background: rgba(5, 7, 10, 0.32);
+    }
+
+    .friends h2 {
+      margin: 0 0 14px;
+      font-size: 1.15rem;
+      letter-spacing: 1px;
+      text-transform: uppercase;
+      color: var(--line);
+      text-shadow: 0 0 8px rgba(141, 255, 189, 0.35);
+    }
+
+    .friend-add {
+      display: grid;
+      grid-template-columns: 1fr auto;
+      gap: 12px;
+      margin-bottom: 14px;
+    }
+
+    .friend-list {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+    }
+
+    .friend-chip {
+      border: 1px solid rgba(188, 199, 224, 0.44);
+      padding: 8px 12px;
+      color: #e6e9ee;
+      background: rgba(255, 255, 255, 0.03);
+      font-size: 0.95rem;
+    }
+
+    .action-btn {
+      border: 2px solid var(--line-soft);
+      padding: 16px 10px;
+      font-size: 1.05rem;
+      font-family: inherit;
+      letter-spacing: 1px;
+      text-transform: uppercase;
+      background: transparent;
+      color: #e6e9ee;
+      cursor: pointer;
+      transition: background-color 150ms ease, color 150ms ease, transform 120ms ease, text-shadow 150ms ease;
+    }
+
+    .action-btn:hover {
+      background: rgba(255, 255, 255, 0.05);
+      color: #f9fcff;
+    }
+
+    .action-btn.primary {
+      color: var(--line);
+      text-shadow: 0 0 8px rgba(141, 255, 189, 0.5);
+    }
+
+    .action-btn.primary:hover {
+      background: rgba(28, 255, 122, 0.1);
+    }
+
+    .action-btn:active {
+      transform: translateY(1px);
+    }
+
+    @media (max-width: 760px) {
+      .site-header {
+        padding: 16px 14px;
+      }
+
+      .nav {
+        gap: 12px;
+      }
+
+      .nav a {
+        font-size: 0.95rem;
+      }
+
+      .frame {
+        margin-top: 24px;
+        grid-template-columns: 1fr;
+      }
+
+      .side {
+        grid-template-columns: 1fr 1fr 1fr;
+        grid-template-rows: 68px;
+        border-right: 0;
+        border-bottom: 2px solid var(--line-soft);
+      }
+
+      .side-btn {
+        border-bottom: 0;
+        border-right: 2px solid var(--line-soft);
+      }
+
+      .side-btn:last-child {
+        border-right: 0;
+      }
+
+      .content {
+        padding: 24px 14px 22px;
+      }
+
+      .actions {
+        grid-template-columns: 1fr;
+        max-width: none;
+      }
+
+      .friend-add {
+        grid-template-columns: 1fr;
+      }
+    }
+
+    @keyframes fade-in {
+      from {
+        opacity: 0;
+        transform: translateY(10px);
+      }
+      to {
+        opacity: 1;
+        transform: translateY(0);
+      }
+    }
+  </style>
+</head>
+<body>
+  <header class="site-header" aria-label="Primary navigation">
+    <h2 class="brand">RUNTIME TERROR</h2>
+    <nav class="nav">
+      <a href="./index.html">Home</a>
+      <a href="./game-search.html">Game</a>
+      <a href="./profile-settings.html">Profile</a>
+      <a href="./login.html">Login</a>
+    </nav>
+  </header>
+
+  <main class="frame">
+    <aside class="side" aria-label="Profile sections">
+      <button class="side-btn active" type="button" aria-label="Profile">
+        <svg viewBox="0 0 24 24" aria-hidden="true">
+          <circle cx="12" cy="7.5" r="3.5"></circle>
+          <path d="M5 20c0-3.5 3-6 7-6s7 2.5 7 6"></path>
+        </svg>
+      </button>
+      <button class="side-btn" type="button" aria-label="Favorites">
+        <svg viewBox="0 0 24 24" aria-hidden="true">
+          <path d="M12 20s-7-4.4-7-10a4 4 0 0 1 7-2.5A4 4 0 0 1 19 10c0 5.6-7 10-7 10z"></path>
+        </svg>
+      </button>
+      <button class="side-btn" type="button" aria-label="Cloud saves">
+        <svg viewBox="0 0 24 24" aria-hidden="true">
+          <path d="M8 18h9a4 4 0 0 0 .8-7.9A6 6 0 0 0 6.3 8.7 4.5 4.5 0 0 0 8 18z"></path>
+          <path d="M12 16V9"></path>
+          <path d="M9.5 11.5 12 9l2.5 2.5"></path>
+        </svg>
+      </button>
+    </aside>
+
+    <section class="content" aria-label="Account settings">
+      <h1>Profile Settings</h1>
+      <form class="form-grid">
+        <label class="input-wrap">
+          <input type="text" placeholder="Display Name" />
+        </label>
+        <label class="input-wrap">
+          <input type="email" placeholder="Email Address" />
+        </label>
+        <div class="actions">
+          <button class="action-btn primary" type="button">Save</button>
+          <button class="action-btn" type="button">Change Password</button>
+        </div>
+      </form>
+
+      <section class="friends" aria-label="Add friends">
+        <h2>Add Friends</h2>
+        <div class="friend-add">
+          <label class="input-wrap">
+            <input type="text" placeholder="Friend username or email" />
+          </label>
+          <button class="action-btn primary" type="button">Add Friend</button>
+        </div>
+        <div class="friend-list" aria-label="Current friends">
+          <span class="friend-chip">@bot_hunter</span>
+          <span class="friend-chip">@neon_runner</span>
+          <span class="friend-chip">@pixel_warrior</span>
+        </div>
+      </section>
+    </section>
+  </main>
+</body>
+</html>
