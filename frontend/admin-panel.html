@@ -1,0 +1,492 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Runtime Terror - Admin Panel</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Special+Elite&family=Share+Tech+Mono&display=swap" rel="stylesheet" />
+  <style>
+    :root {
+      --bg: #0a0d11;
+      --panel: #12161c;
+      --line: #1cff7a;
+      --line-soft: rgba(28, 255, 122, 0.45);
+      --text: #d9dce2;
+      --muted: #8c93a3;
+      --warn: #ff8f8f;
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      font-family: "Share Tech Mono", monospace;
+      color: var(--text);
+      background:
+        radial-gradient(circle at 20% 8%, rgba(34, 66, 45, 0.25), transparent 46%),
+        repeating-linear-gradient(90deg, rgba(255, 255, 255, 0.01), rgba(255, 255, 255, 0.01) 2px, transparent 2px, transparent 36px),
+        linear-gradient(180deg, #0f1319 0%, #080b0f 100%);
+      display: flex;
+      flex-direction: column;
+    }
+
+    .site-header {
+      border-bottom: 2px solid var(--line);
+      padding: 18px 38px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+      background: rgba(8, 11, 15, 0.78);
+      backdrop-filter: blur(4px);
+    }
+
+    .brand {
+      margin: 0;
+      color: var(--line);
+      font-family: "Special Elite", monospace;
+      letter-spacing: 2px;
+      font-size: clamp(1.4rem, 2.7vw, 2.2rem);
+      text-shadow: 0 0 9px rgba(141, 255, 189, 0.55);
+    }
+
+    .nav {
+      display: flex;
+      gap: 34px;
+      flex-wrap: wrap;
+    }
+
+    .nav a {
+      color: #f2f2f2;
+      text-decoration: none;
+      font-size: clamp(1rem, 1.6vw, 1.45rem);
+      font-family: "Special Elite", monospace;
+      opacity: 0.92;
+      transition: opacity 140ms ease, text-shadow 140ms ease;
+    }
+
+    .nav a:hover {
+      opacity: 1;
+      text-shadow: 0 0 8px rgba(141, 255, 189, 0.38);
+    }
+
+    .frame {
+      margin: 34px auto 30px;
+      width: min(1100px, calc(100% - 24px));
+      background: var(--panel);
+      border: 2px solid var(--line-soft);
+      box-shadow: 0 0 0 1px rgba(28, 255, 122, 0.18), 0 12px 40px rgba(0, 0, 0, 0.42);
+      padding: 28px;
+      animation: fade-in 340ms ease-out;
+    }
+
+    h1 {
+      margin: 0 0 16px;
+      letter-spacing: 2px;
+      font-size: clamp(2rem, 5vw, 2.75rem);
+      font-family: "Special Elite", monospace;
+      color: var(--line);
+      text-shadow: 0 0 14px rgba(141, 255, 189, 0.7);
+    }
+
+    .meta {
+      margin: 0 0 20px;
+      color: var(--muted);
+      font-size: 0.95rem;
+    }
+
+    .status {
+      min-height: 20px;
+      margin: 0 0 18px;
+      color: var(--muted);
+    }
+
+    .status.ok { color: var(--line); }
+    .status.err { color: var(--warn); }
+
+    .tools {
+      border: 2px solid var(--line-soft);
+      background: rgba(5, 7, 10, 0.32);
+      padding: 14px;
+      margin-bottom: 18px;
+    }
+
+    .actions {
+      display: grid;
+      grid-template-columns: 2fr 1fr auto;
+      gap: 10px;
+      margin-bottom: 10px;
+    }
+
+    .input-wrap {
+      border: 2px solid rgba(188, 199, 224, 0.44);
+      background: rgba(5, 7, 10, 0.45);
+      transition: border-color 120ms ease, box-shadow 120ms ease;
+    }
+
+    .input-wrap:focus-within {
+      border-color: var(--line);
+      box-shadow: 0 0 0 2px rgba(28, 255, 122, 0.2);
+    }
+
+    input, select {
+      width: 100%;
+      border: 0;
+      padding: 12px 10px;
+      font-size: 1rem;
+      outline: none;
+      font-family: inherit;
+      background: transparent;
+      color: #e4e9f0;
+    }
+
+    button {
+      border: 2px solid var(--line-soft);
+      padding: 12px 10px;
+      font-size: 0.95rem;
+      font-family: inherit;
+      letter-spacing: 0.8px;
+      text-transform: uppercase;
+      background: transparent;
+      color: #e6e9ee;
+      cursor: pointer;
+      transition: background-color 150ms ease, color 150ms ease;
+    }
+
+    button:hover {
+      background: rgba(255, 255, 255, 0.05);
+      color: #f9fcff;
+    }
+
+    button.primary {
+      color: var(--line);
+      text-shadow: 0 0 8px rgba(141, 255, 189, 0.5);
+    }
+
+    button.primary:hover {
+      background: rgba(28, 255, 122, 0.1);
+    }
+
+    .table-wrap {
+      border: 2px solid var(--line-soft);
+      overflow-x: auto;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      min-width: 840px;
+    }
+
+    th, td {
+      border-bottom: 1px solid rgba(188, 199, 224, 0.2);
+      padding: 10px;
+      text-align: left;
+      vertical-align: middle;
+    }
+
+    th {
+      color: var(--line);
+      text-transform: uppercase;
+      font-size: 0.85rem;
+      letter-spacing: 1px;
+    }
+
+    .row-actions {
+      display: flex;
+      gap: 8px;
+      align-items: center;
+    }
+
+    .hidden { display: none; }
+
+    @media (max-width: 860px) {
+      .site-header { padding: 16px 14px; }
+      .nav { gap: 12px; }
+      .nav a { font-size: 0.95rem; }
+      .frame { padding: 16px; }
+      .actions { grid-template-columns: 1fr; }
+      button { width: 100%; }
+    }
+
+    @keyframes fade-in {
+      from { opacity: 0; transform: translateY(10px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+  </style>
+</head>
+<body>
+  <header class="site-header" aria-label="Primary navigation">
+    <h2 class="brand">RUNTIME TERROR</h2>
+    <nav class="nav">
+      <a href="./index.html">Home</a>
+      <a href="./game-search.html">Game</a>
+      <a href="./profile-settings.html">Profile</a>
+      <a href="./admin-panel.html">Admin</a>
+      <a href="./login.html">Login</a>
+    </nav>
+  </header>
+
+  <main class="frame">
+    <h1>Admin Panel</h1>
+    <p id="admin-meta" class="meta">Checking permissions...</p>
+    <p id="status" class="status">Sign in with an admin-level account.</p>
+
+    <section id="tools" class="tools hidden" aria-label="Admin tools">
+      <div class="actions">
+        <label class="input-wrap">
+          <input id="lookup" type="text" placeholder="Find user by uid, username, or email" />
+        </label>
+        <label class="input-wrap">
+          <select id="target-rank">
+            <option value="player">player</option>
+            <option value="unranked">unranked</option>
+            <option value="mod">mod</option>
+            <option value="admin">admin</option>
+            <option value="Co-Owner">Co-Owner</option>
+            <option value="owner">owner</option>
+          </select>
+        </label>
+        <button id="apply-rank" class="primary" type="button">Update Rank</button>
+      </div>
+      <small>Changes write to `users/{uid}.rank` and `updatedAt`.</small>
+    </section>
+
+    <section id="table-wrap" class="table-wrap hidden" aria-label="User list">
+      <table>
+        <thead>
+          <tr>
+            <th>UID</th>
+            <th>Username</th>
+            <th>Email</th>
+            <th>Current Rank</th>
+            <th>Set Rank</th>
+          </tr>
+        </thead>
+        <tbody id="rows"></tbody>
+      </table>
+    </section>
+  </main>
+
+  <script type="module">
+    import { auth, db } from "./firebase.js";
+    import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-auth.js";
+    import { collection, doc, getDoc, getDocs, limit, query, serverTimestamp, updateDoc, where } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore.js";
+
+    const USERS_COLLECTION = "users";
+    const ADMIN_RANKS = new Set(["admin", "co-owner", "owner"]);
+    const RANK_OPTIONS = ["player", "unranked", "mod", "admin", "Co-Owner", "owner"];
+
+    const adminMeta = document.getElementById("admin-meta");
+    const statusEl = document.getElementById("status");
+    const tools = document.getElementById("tools");
+    const tableWrap = document.getElementById("table-wrap");
+    const rows = document.getElementById("rows");
+    const lookupInput = document.getElementById("lookup");
+    const targetRank = document.getElementById("target-rank");
+    const applyRankButton = document.getElementById("apply-rank");
+
+    let currentUser = null;
+    let cache = [];
+
+    function setStatus(message, type = "") {
+      statusEl.textContent = message;
+      statusEl.classList.remove("ok", "err");
+      if (type) statusEl.classList.add(type);
+    }
+
+    function normalizedRank(raw) {
+      return String(raw || "").trim().toLowerCase();
+    }
+
+    async function canUseAdminPanel(uid) {
+      const me = await getDoc(doc(db, USERS_COLLECTION, uid));
+      if (!me.exists()) return { allowed: false, rank: "unknown", profile: null };
+      const profile = me.data();
+      const rank = profile.rank || "unranked";
+      return { allowed: ADMIN_RANKS.has(normalizedRank(rank)), rank, profile };
+    }
+
+    function createRankSelect(initialValue) {
+      const select = document.createElement("select");
+      RANK_OPTIONS.forEach((option) => {
+        const el = document.createElement("option");
+        el.value = option;
+        el.textContent = option;
+        if (String(initialValue || "").toLowerCase() === option.toLowerCase()) {
+          el.selected = true;
+        }
+        select.appendChild(el);
+      });
+      return select;
+    }
+
+    async function updateRankForUid(uid, rankValue) {
+      await updateDoc(doc(db, USERS_COLLECTION, uid), {
+        rank: rankValue,
+        updatedAt: serverTimestamp()
+      });
+    }
+
+    async function findUser(identifier) {
+      const raw = identifier.trim();
+      if (!raw) return null;
+
+      const direct = await getDoc(doc(db, USERS_COLLECTION, raw));
+      if (direct.exists()) return { uid: direct.id, ...direct.data() };
+
+      const byUsername = await getDocs(query(
+        collection(db, USERS_COLLECTION),
+        where("username", "==", raw),
+        limit(1)
+      ));
+      if (!byUsername.empty) {
+        const d = byUsername.docs[0];
+        return { uid: d.id, ...d.data() };
+      }
+
+      const byEmail = await getDocs(query(
+        collection(db, USERS_COLLECTION),
+        where("email", "==", raw.toLowerCase()),
+        limit(1)
+      ));
+      if (!byEmail.empty) {
+        const d = byEmail.docs[0];
+        return { uid: d.id, ...d.data() };
+      }
+
+      return null;
+    }
+
+    function renderRows(users) {
+      rows.innerHTML = "";
+      if (users.length === 0) {
+        const tr = document.createElement("tr");
+        const td = document.createElement("td");
+        td.colSpan = 5;
+        td.textContent = "No users available.";
+        tr.appendChild(td);
+        rows.appendChild(tr);
+        return;
+      }
+
+      users.forEach((user) => {
+        const tr = document.createElement("tr");
+        tr.dataset.uid = user.uid;
+
+        const uid = document.createElement("td");
+        uid.textContent = user.uid;
+        tr.appendChild(uid);
+
+        const username = document.createElement("td");
+        username.textContent = user.username || "-";
+        tr.appendChild(username);
+
+        const email = document.createElement("td");
+        email.textContent = user.email || "-";
+        tr.appendChild(email);
+
+        const rank = document.createElement("td");
+        rank.textContent = user.rank || "unranked";
+        tr.appendChild(rank);
+
+        const action = document.createElement("td");
+        const wrap = document.createElement("div");
+        wrap.className = "row-actions";
+        const select = createRankSelect(user.rank || "unranked");
+        const save = document.createElement("button");
+        save.type = "button";
+        save.className = "primary";
+        save.textContent = "Save";
+        save.addEventListener("click", async () => {
+          save.disabled = true;
+          try {
+            await updateRankForUid(user.uid, select.value);
+            rank.textContent = select.value;
+            user.rank = select.value;
+            setStatus(`Updated ${user.username || user.uid} to rank ${select.value}.`, "ok");
+          } catch (error) {
+            console.error("Rank update error:", error);
+            setStatus(error?.message || "Failed to update rank.", "err");
+          } finally {
+            save.disabled = false;
+          }
+        });
+        wrap.appendChild(select);
+        wrap.appendChild(save);
+        action.appendChild(wrap);
+        tr.appendChild(action);
+        rows.appendChild(tr);
+      });
+    }
+
+    async function loadUsers() {
+      const snapshot = await getDocs(query(collection(db, USERS_COLLECTION), limit(50)));
+      cache = snapshot.docs.map((entry) => ({ uid: entry.id, ...entry.data() }));
+      renderRows(cache);
+    }
+
+    applyRankButton.addEventListener("click", async () => {
+      const identifier = lookupInput.value.trim();
+      if (!identifier) {
+        setStatus("Enter uid, username, or email first.", "err");
+        return;
+      }
+
+      applyRankButton.disabled = true;
+      try {
+        const user = await findUser(identifier);
+        if (!user) {
+          setStatus("User not found.", "err");
+          return;
+        }
+        await updateRankForUid(user.uid, targetRank.value);
+        setStatus(`Updated ${user.username || user.uid} to rank ${targetRank.value}.`, "ok");
+        await loadUsers();
+      } catch (error) {
+        console.error("Apply rank error:", error);
+        setStatus(error?.message || "Failed to apply rank.", "err");
+      } finally {
+        applyRankButton.disabled = false;
+      }
+    });
+
+    onAuthStateChanged(auth, async (user) => {
+      if (!user) {
+        currentUser = null;
+        adminMeta.textContent = "Not logged in.";
+        tools.classList.add("hidden");
+        tableWrap.classList.add("hidden");
+        setStatus("Log in with an admin account to access this page.", "err");
+        return;
+      }
+
+      currentUser = user;
+      try {
+        const check = await canUseAdminPanel(user.uid);
+        adminMeta.textContent = `Signed in as ${user.email || user.uid}. Rank: ${check.rank}`;
+
+        if (!check.allowed) {
+          tools.classList.add("hidden");
+          tableWrap.classList.add("hidden");
+          setStatus("Access denied. Your rank does not have admin permissions.", "err");
+          return;
+        }
+
+        tools.classList.remove("hidden");
+        tableWrap.classList.remove("hidden");
+        setStatus("Admin access granted.", "ok");
+        await loadUsers();
+      } catch (error) {
+        console.error("Admin panel load error:", error);
+        tools.classList.add("hidden");
+        tableWrap.classList.add("hidden");
+        setStatus(error?.message || "Failed to load admin panel.", "err");
+      }
+    });
+  </script>
+</body>
+</html>
