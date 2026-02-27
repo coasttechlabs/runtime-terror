@@ -1,10 +1,13 @@
 import { auth } from "./firebase.js";
 import { onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-auth.js";
 
-const STATIC_LINKS = [
+const PUBLIC_LINKS = [
   { href: "./index.html", label: "Home" },
   { href: "./index.html#docs", label: "Docs" },
-  { href: "./index.html#leaderboard", label: "Leaderboard" },
+  { href: "./index.html#leaderboard", label: "Leaderboard" }
+];
+
+const PRIVATE_LINKS = [
   { href: "./game-search.html", label: "Game" },
   { href: "./profile-settings.html", label: "Profile" },
   { href: "./admin-panel.html", label: "Admin" }
@@ -32,11 +35,14 @@ function makeLogoutLink() {
 function renderNav(nav, user) {
   nav.innerHTML = "";
 
-  STATIC_LINKS.forEach((link) => {
+  PUBLIC_LINKS.forEach((link) => {
     nav.appendChild(makeLink(link));
   });
 
   if (user) {
+    PRIVATE_LINKS.forEach((link) => {
+      nav.appendChild(makeLink(link));
+    });
     nav.appendChild(makeLogoutLink());
     return;
   }

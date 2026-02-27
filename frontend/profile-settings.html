@@ -439,6 +439,7 @@
     let stopIncomingListener = null;
     let outgoingRequests = [];
     let incomingRequests = [];
+    let pendingRenderToken = 0;
 
     function setStatus(message, type = "") {
       friendsStatus.textContent = message;
@@ -456,6 +457,7 @@
     }
 
     function clearFriendRequestListeners() {
+      pendingRenderToken += 1;
       if (stopOutgoingListener) {
         stopOutgoingListener();
         stopOutgoingListener = null;
@@ -520,27 +522,36 @@
     }
 
     async function renderPendingRequests() {
-      friendList.innerHTML = "";
       if (!currentUser) return;
 
+      const renderToken = ++pendingRenderToken;
+      const outgoingSnapshot = [...outgoingRequests];
+      const incomingSnapshot = [...incomingRequests];
+
       const outgoingPending = await Promise.all(
-        outgoingRequests
+        outgoingSnapshot
           .filter((entry) => entry.status === "pending")
           .map(async (entry) => chip("Sent: @" + await usernameFor(entry.touserid)))
       );
 
-      if (outgoingPending.length === 0 && incomingRequests.filter((entry) => entry.status === "pending").length === 0) {
-        friendList.appendChild(chip("No pending requests"));
+      if (renderToken !== pendingRenderToken) return;
+
+      const incomingPending = incomingSnapshot.filter((entry) => entry.status === "pending");
+      const fragment = document.createDocumentFragment();
+
+      if (outgoingPending.length === 0 && incomingPending.length === 0) {
+        fragment.appendChild(chip("No pending requests"));
+        friendList.replaceChildren(fragment);
         return;
       }
-      outgoingPending.forEach((item) => friendList.appendChild(item));
+      outgoingPending.forEach((item) => fragment.appendChild(item));
 
-      for (const entry of incomingRequests) {
-        if (entry.status !== "pending") continue;
+      for (const entry of incomingPending) {
         const item = document.createElement("div");
         item.className = "friend-item";
 
         const sender = await usernameFor(entry.fromuserid);
+        if (renderToken !== pendingRenderToken) return;
         item.appendChild(chip("Incoming: @" + sender));
 
         const actions = document.createElement("div");
@@ -561,8 +572,11 @@
         actions.appendChild(accept);
         actions.appendChild(decline);
         item.appendChild(actions);
-        friendList.appendChild(item);
+        fragment.appendChild(item);
       }
+
+      if (renderToken !== pendingRenderToken) return;
+      friendList.replaceChildren(fragment);
     }
 
     function watchFriendRequests() {
