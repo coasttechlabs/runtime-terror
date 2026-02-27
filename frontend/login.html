@@ -252,7 +252,11 @@
       <a href="./index.html">Home</a>
       <a href="./index.html#docs">Docs</a>
       <a href="./index.html#leaderboard">Leaderboard</a>
+      <a href="./game-search.html">Game</a>
+      <a href="./profile-settings.html">Profile</a>
+      <a href="./admin-panel.html">Admin</a>
       <a href="./login.html">Login</a>
+      <a href="./signup.html">Sign Up</a>
     </nav>
   </header>
 
@@ -282,24 +286,11 @@
     </section>
   </main>
 
+  <script type="module" src="./nav.js"></script>
   <script type="module">
-  import { initializeApp, getApps } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-app.js";
-  import { getAuth, signInWithEmailAndPassword } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-auth.js";
-  import { getFirestore, doc, setDoc, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore.js";
-
-  const firebaseConfig = {
-    apiKey: "AIzaSyAmSCkSrBjHqWe0ZA6li-WTSaB4vtm-tIk",
-    authDomain: "battle-bots-c6965.firebaseapp.com",
-    projectId: "battle-bots-c6965",
-    storageBucket: "battle-bots-c6965.firebasestorage.app",
-    messagingSenderId: "319178537337",
-    appId: "1:319178537337:web:4a33b0b6230cb25b7e97a8",
-    measurementId: "G-7PPN676K4X"
-  };
-  const app = getApps().length ? getApps()[0] : initializeApp(firebaseConfig);
-
-  const auth = getAuth(app);
-  const db = getFirestore(app);
+  import { auth, db } from "./firebase.js";
+  import { signInWithEmailAndPassword } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-auth.js";
+  import { doc, setDoc, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore.js";
 
   const USERS_COLLECTION = "users";
 
