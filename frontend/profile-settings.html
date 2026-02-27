@@ -207,6 +207,39 @@
       gap: 10px;
     }
 
+    .friend-item {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+
+    .friend-actions {
+      display: inline-flex;
+      gap: 6px;
+    }
+
+    .mini-btn {
+      border: 1px solid var(--line-soft);
+      background: rgba(255, 255, 255, 0.03);
+      color: #e6e9ee;
+      padding: 6px 10px;
+      font-family: inherit;
+      font-size: 0.82rem;
+      letter-spacing: 0.5px;
+      text-transform: uppercase;
+      cursor: pointer;
+    }
+
+    .mini-btn:hover {
+      background: rgba(255, 255, 255, 0.08);
+    }
+
+    .mini-btn.accept {
+      color: var(--line);
+      border-color: rgba(28, 255, 122, 0.5);
+    }
+
     .friend-chip {
       border: 1px solid rgba(188, 199, 224, 0.44);
       padding: 8px 12px;
@@ -385,7 +418,7 @@
   <script type="module">
     import { auth, db } from "./firebase.js";
     import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-auth.js";
-    import { addDoc, collection, doc, getDoc, getDocs, limit, query, serverTimestamp, where } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore.js";
+    import { addDoc, collection, doc, getDoc, getDocs, limit, onSnapshot, query, serverTimestamp, updateDoc, where } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore.js";
 
     const USERS_COLLECTION = "users";
     const FRIEND_REQUESTS_COLLECTION = "friendRequests";
@@ -397,6 +430,10 @@
 
     let currentUser = null;
     let currentProfile = null;
+    let stopOutgoingListener = null;
+    let stopIncomingListener = null;
+    let outgoingRequests = [];
+    let incomingRequests = [];
 
     function setStatus(message, type = "") {
       friendsStatus.textContent = message;
@@ -411,6 +448,19 @@
       span.className = "friend-chip";
       span.textContent = text;
       return span;
+    }
+
+    function clearFriendRequestListeners() {
+      if (stopOutgoingListener) {
+        stopOutgoingListener();
+        stopOutgoingListener = null;
+      }
+      if (stopIncomingListener) {
+        stopIncomingListener();
+        stopIncomingListener = null;
+      }
+      outgoingRequests = [];
+      incomingRequests = [];
     }
 
     async function findUserByIdentifier(identifier) {
@@ -464,49 +514,111 @@
       return name;
     }
 
-    async function loadPendingRequests() {
+    async function renderPendingRequests() {
       friendList.innerHTML = "";
       if (!currentUser) return;
 
-      let outgoingSnap;
-      let incomingSnap;
-      try {
-        outgoingSnap = await getDocs(query(
-          collection(db, FRIEND_REQUESTS_COLLECTION),
-          where("fromuserid", "==", currentUser.uid)
-        ));
-        incomingSnap = await getDocs(query(
-          collection(db, FRIEND_REQUESTS_COLLECTION),
-          where("touserid", "==", currentUser.uid)
-        ));
-      } catch (error) {
-        if (error?.code === "permission-denied") {
-          friendList.appendChild(chip("Requests hidden by Firestore rules"));
-          return;
-        }
-        throw error;
-      }
-
       const outgoingPending = await Promise.all(
-        outgoingSnap.docs
-          .map((entry) => entry.data())
+        outgoingRequests
           .filter((entry) => entry.status === "pending")
           .map(async (entry) => chip("Sent: @" + await usernameFor(entry.touserid)))
       );
 
-      const incomingPending = await Promise.all(
-        incomingSnap.docs
-          .map((entry) => entry.data())
-          .filter((entry) => entry.status === "pending")
-          .map(async (entry) => chip("Incoming: @" + await usernameFor(entry.fromuserid)))
-      );
-
-      const items = [...outgoingPending, ...incomingPending];
-      if (items.length === 0) {
+      if (outgoingPending.length === 0 && incomingRequests.filter((entry) => entry.status === "pending").length === 0) {
         friendList.appendChild(chip("No pending requests"));
         return;
       }
-      items.forEach((item) => friendList.appendChild(item));
+      outgoingPending.forEach((item) => friendList.appendChild(item));
+
+      for (const entry of incomingRequests) {
+        if (entry.status !== "pending") continue;
+        const item = document.createElement("div");
+        item.className = "friend-item";
+
+        const sender = await usernameFor(entry.fromuserid);
+        item.appendChild(chip("Incoming: @" + sender));
+
+        const actions = document.createElement("div");
+        actions.className = "friend-actions";
+
+        const accept = document.createElement("button");
+        accept.type = "button";
+        accept.className = "mini-btn accept";
+        accept.textContent = "Accept";
+        accept.addEventListener("click", () => respondToRequest(entry.id, "accepted"));
+
+        const decline = document.createElement("button");
+        decline.type = "button";
+        decline.className = "mini-btn";
+        decline.textContent = "Decline";
+        decline.addEventListener("click", () => respondToRequest(entry.id, "declined"));
+
+        actions.appendChild(accept);
+        actions.appendChild(decline);
+        item.appendChild(actions);
+        friendList.appendChild(item);
+      }
+    }
+
+    function watchFriendRequests() {
+      clearFriendRequestListeners();
+      if (!currentUser) return;
+
+      const outgoingQuery = query(
+        collection(db, FRIEND_REQUESTS_COLLECTION),
+        where("fromuserid", "==", currentUser.uid)
+      );
+      const incomingQuery = query(
+        collection(db, FRIEND_REQUESTS_COLLECTION),
+        where("touserid", "==", currentUser.uid)
+      );
+
+      stopOutgoingListener = onSnapshot(outgoingQuery, (snapshot) => {
+        outgoingRequests = snapshot.docs.map((entry) => ({ id: entry.id, ...entry.data() }));
+        renderPendingRequests().catch((error) => {
+          console.error("Render outgoing request error:", error);
+          setStatus("Failed to load outgoing requests.", "err");
+        });
+      }, (error) => {
+        if (error?.code === "permission-denied") {
+          friendList.innerHTML = "";
+          friendList.appendChild(chip("Requests hidden by Firestore rules"));
+          return;
+        }
+        console.error("Outgoing request listener error:", error);
+      });
+
+      stopIncomingListener = onSnapshot(incomingQuery, (snapshot) => {
+        incomingRequests = snapshot.docs.map((entry) => ({ id: entry.id, ...entry.data() }));
+        renderPendingRequests().catch((error) => {
+          console.error("Render incoming request error:", error);
+          setStatus("Failed to load incoming requests.", "err");
+        });
+      }, (error) => {
+        if (error?.code === "permission-denied") {
+          friendList.innerHTML = "";
+          friendList.appendChild(chip("Requests hidden by Firestore rules"));
+          return;
+        }
+        console.error("Incoming request listener error:", error);
+      });
+    }
+
+    async function respondToRequest(requestId, status) {
+      if (!requestId || !currentUser) return;
+      try {
+        await updateDoc(doc(db, FRIEND_REQUESTS_COLLECTION, requestId), {
+          status,
+          respondedAt: serverTimestamp()
+        });
+        setStatus(
+          status === "accepted" ? "Friend request accepted." : "Friend request declined.",
+          "ok"
+        );
+      } catch (error) {
+        console.error("Friend request response error:", error);
+        setStatus(error?.message || "Failed to update friend request.", "err");
+      }
     }
 
     addFriendButton.addEventListener("click", async () => {
@@ -532,6 +644,21 @@
           setStatus("You cannot send a request to yourself.", "err");
           return;
         }
+        if (outgoingRequests.some((entry) => entry.touserid === target.uid && entry.status === "pending")) {
+          setStatus("You already sent this user a pending request.", "err");
+          return;
+        }
+        if (incomingRequests.some((entry) => entry.fromuserid === target.uid && entry.status === "pending")) {
+          setStatus("This user already sent you a request. Accept it below.", "err");
+          return;
+        }
+        if (
+          outgoingRequests.some((entry) => entry.touserid === target.uid && entry.status === "accepted") ||
+          incomingRequests.some((entry) => entry.fromuserid === target.uid && entry.status === "accepted")
+        ) {
+          setStatus("You are already friends.", "err");
+          return;
+        }
 
         await addDoc(collection(db, FRIEND_REQUESTS_COLLECTION), {
           fromuserid: currentUser.uid,
@@ -542,7 +669,6 @@
 
         friendInput.value = "";
         setStatus("Friend request sent.", "ok");
-        await loadPendingRequests();
       } catch (error) {
         console.error("Friend request error:", error);
         setStatus(error?.message || "Failed to send friend request.", "err");
@@ -553,6 +679,9 @@
 
     onAuthStateChanged(auth, async (user) => {
       if (!user) {
+        currentUser = null;
+        currentProfile = null;
+        clearFriendRequestListeners();
         setStatus("Log in to send friend requests.", "err");
         addFriendButton.disabled = true;
         friendInput.disabled = true;
@@ -567,7 +696,7 @@
       friendInput.disabled = false;
       addFriendButton.disabled = false;
       setStatus("Send a friend request by username or email.");
-      await loadPendingRequests();
+      watchFriendRequests();
     });
   </script>
 </body>
