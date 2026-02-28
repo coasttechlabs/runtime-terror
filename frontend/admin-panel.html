@@ -276,12 +276,10 @@
 
   <script type="module" src="./nav.js"></script>
   <script type="module">
-    import { auth, db } from "./firebase.js";
+    import { auth } from "./firebase.js";
     import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-auth.js";
-    import { collection, doc, getDoc, getDocs, limit, query, serverTimestamp, updateDoc, where } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore.js";
-
-    const USERS_COLLECTION = "users";
-    const ADMIN_RANKS = new Set(["admin", "co-owner", "owner"]);
+    
+    const API_BASE = window.RUNTIME_TERROR_API_BASE || "http://127.0.0.1:8000/api";
     const RANK_OPTIONS = ["player", "unranked", "mod", "admin", "Co-Owner", "owner"];
 
     const adminMeta = document.getElementById("admin-meta");
@@ -293,7 +291,7 @@
     const targetRank = document.getElementById("target-rank");
     const applyRankButton = document.getElementById("apply-rank");
 
-    let currentUser = null;
+    let activeIdToken = "";
     let cache = [];
 
     function setStatus(message, type = "") {
@@ -302,16 +300,30 @@
       if (type) statusEl.classList.add(type);
     }
 
-    function normalizedRank(raw) {
-      return String(raw || "").trim().toLowerCase();
-    }
+    async function apiRequest(path, { method = "GET", token = "", body = null } = {}) {
+      const headers = {};
+      if (token) headers.Authorization = `Bearer ${token}`;
+      if (body !== null) headers["Content-Type"] = "application/json";
 
-    async function canUseAdminPanel(uid) {
-      const me = await getDoc(doc(db, USERS_COLLECTION, uid));
-      if (!me.exists()) return { allowed: false, rank: "unknown", profile: null };
-      const profile = me.data();
-      const rank = profile.rank || "unranked";
-      return { allowed: ADMIN_RANKS.has(normalizedRank(rank)), rank, profile };
+      const response = await fetch(`${API_BASE}${path}`, {
+        method,
+        headers,
+        body: body === null ? undefined : JSON.stringify(body)
+      });
+
+      let payload = null;
+      try {
+        payload = await response.json();
+      } catch (_error) {
+        payload = null;
+      }
+
+      if (!response.ok) {
+        const message = payload?.detail || payload?.rank?.[0] || `Request failed (${response.status})`;
+        throw new Error(message);
+      }
+
+      return payload;
     }
 
     function createRankSelect(initialValue) {
@@ -329,40 +341,21 @@
     }
 
     async function updateRankForUid(uid, rankValue) {
-      await updateDoc(doc(db, USERS_COLLECTION, uid), {
-        rank: rankValue,
-        updatedAt: serverTimestamp()
+      const result = await apiRequest(`/admin/users/${encodeURIComponent(uid)}/rank`, {
+        method: "PATCH",
+        token: activeIdToken,
+        body: { rank: rankValue }
       });
+      return result.user;
     }
 
     async function findUser(identifier) {
       const raw = identifier.trim();
       if (!raw) return null;
-
-      const direct = await getDoc(doc(db, USERS_COLLECTION, raw));
-      if (direct.exists()) return { uid: direct.id, ...direct.data() };
-
-      const byUsername = await getDocs(query(
-        collection(db, USERS_COLLECTION),
-        where("username", "==", raw),
-        limit(1)
-      ));
-      if (!byUsername.empty) {
-        const d = byUsername.docs[0];
-        return { uid: d.id, ...d.data() };
-      }
-
-      const byEmail = await getDocs(query(
-        collection(db, USERS_COLLECTION),
-        where("email", "==", raw.toLowerCase()),
-        limit(1)
-      ));
-      if (!byEmail.empty) {
-        const d = byEmail.docs[0];
-        return { uid: d.id, ...d.data() };
-      }
-
-      return null;
+      const result = await apiRequest(`/admin/users?search=${encodeURIComponent(raw)}&limit=1`, {
+        token: activeIdToken
+      });
+      return result.users?.[0] || null;
     }
 
     function renderRows(users) {
@@ -408,10 +401,10 @@
         save.addEventListener("click", async () => {
           save.disabled = true;
           try {
-            await updateRankForUid(user.uid, select.value);
-            rank.textContent = select.value;
-            user.rank = select.value;
-            setStatus(`Updated ${user.username || user.uid} to rank ${select.value}.`, "ok");
+            const updatedUser = await updateRankForUid(user.uid, select.value);
+            rank.textContent = updatedUser.rank || select.value;
+            user.rank = updatedUser.rank || select.value;
+            setStatus(`Updated ${user.username || user.uid} to rank ${user.rank}.`, "ok");
           } catch (error) {
             console.error("Rank update error:", error);
             setStatus(error?.message || "Failed to update rank.", "err");
@@ -428,8 +421,8 @@
     }
 
     async function loadUsers() {
-      const snapshot = await getDocs(query(collection(db, USERS_COLLECTION), limit(50)));
-      cache = snapshot.docs.map((entry) => ({ uid: entry.id, ...entry.data() }));
+      const result = await apiRequest("/admin/users?limit=50", { token: activeIdToken });
+      cache = result.users || [];
       renderRows(cache);
     }
 
@@ -459,8 +452,8 @@
     });
 
     onAuthStateChanged(auth, async (user) => {
-      if (!user) {
-        currentUser = null;
+        if (!user) {
+        activeIdToken = "";
         adminMeta.textContent = "Not logged in.";
         tools.classList.add("hidden");
         tableWrap.classList.add("hidden");
@@ -468,17 +461,10 @@
         return;
       }
 
-      currentUser = user;
       try {
-        const check = await canUseAdminPanel(user.uid);
-        adminMeta.textContent = `Signed in as ${user.email || user.uid}. Rank: ${check.rank}`;
-
-        if (!check.allowed) {
-          tools.classList.add("hidden");
-          tableWrap.classList.add("hidden");
-          setStatus("Access denied. Your rank does not have admin permissions.", "err");
-          return;
-        }
+        activeIdToken = await user.getIdToken(true);
+        const me = await apiRequest("/admin/me", { token: activeIdToken });
+        adminMeta.textContent = `Signed in as ${me.email || me.uid}. Admin: ${me.admin ? "yes" : "no"}`;
 
         tools.classList.remove("hidden");
         tableWrap.classList.remove("hidden");
