@@ -251,11 +251,17 @@
             <option value="admin">admin</option>
             <option value="Co-Owner">Co-Owner</option>
             <option value="owner">owner</option>
+            <option value="banned">banned</option>
           </select>
         </label>
         <button id="apply-rank" class="primary" type="button">Update Rank</button>
       </div>
-      <small>Changes write to `users/{uid}.rank` and `updatedAt`.</small>
+      <div class="actions" style="grid-template-columns: 1fr 1fr 1fr;">
+        <button id="cmd-add-level" type="button">Add Level</button>
+        <button id="cmd-remove-level" type="button">Remove Level</button>
+        <button id="cmd-ban" type="button" style="color: var(--warn); border-color: var(--warn);">Ban User</button>
+      </div>
+      <small>Changes write to `users/{uid}`.</small>
     </section>
 
     <section id="table-wrap" class="table-wrap hidden" aria-label="User list">
@@ -282,7 +288,7 @@
 
     const USERS_COLLECTION = "users";
     const ADMIN_RANKS = new Set(["admin", "co-owner", "owner"]);
-    const RANK_OPTIONS = ["player", "unranked", "mod", "admin", "Co-Owner", "owner"];
+    const RANK_OPTIONS = ["player", "unranked", "mod", "admin", "Co-Owner", "owner", "banned"];
 
     const adminMeta = document.getElementById("admin-meta");
     const statusEl = document.getElementById("status");
@@ -292,6 +298,9 @@
     const lookupInput = document.getElementById("lookup");
     const targetRank = document.getElementById("target-rank");
     const applyRankButton = document.getElementById("apply-rank");
+    const addLevelBtn = document.getElementById("cmd-add-level");
+    const removeLevelBtn = document.getElementById("cmd-remove-level");
+    const banBtn = document.getElementById("cmd-ban");
 
     let currentUser = null;
     let cache = [];
@@ -331,6 +340,13 @@
     async function updateRankForUid(uid, rankValue) {
       await updateDoc(doc(db, USERS_COLLECTION, uid), {
         rank: rankValue,
+        updatedAt: serverTimestamp()
+      });
+    }
+
+    async function updateUserFields(uid, fields) {
+      await updateDoc(doc(db, USERS_COLLECTION, uid), {
+        ...fields,
         updatedAt: serverTimestamp()
       });
     }
@@ -404,7 +420,7 @@
         const save = document.createElement("button");
         save.type = "button";
         save.className = "primary";
-        save.textContent = "Save";
+        save.textContent = "Edit User";
         save.addEventListener("click", async () => {
           save.disabled = true;
           try {
@@ -455,6 +471,65 @@
         setStatus(error?.message || "Failed to apply rank.", "err");
       } finally {
         applyRankButton.disabled = false;
+      }
+    });
+
+    addLevelBtn.addEventListener("click", async () => {
+      const identifier = lookupInput.value.trim();
+      if (!identifier) return setStatus("Enter user identifier.", "err");
+      addLevelBtn.disabled = true;
+      try {
+        const user = await findUser(identifier);
+        if (!user) throw new Error("User not found.");
+        const newLevel = Number(user.level || 0) + 1;
+        await updateUserFields(user.uid, { level: newLevel });
+        setStatus(`Increased level for ${user.username || user.uid} to ${newLevel}.`, "ok");
+        await loadUsers();
+      } catch (e) {
+        setStatus(e.message, "err");
+      } finally {
+        addLevelBtn.disabled = false;
+      }
+    });
+
+    removeLevelBtn.addEventListener("click", async () => {
+      const identifier = lookupInput.value.trim();
+      if (!identifier) return setStatus("Enter user identifier.", "err");
+      removeLevelBtn.disabled = true;
+      try {
+        const user = await findUser(identifier);
+        if (!user) throw new Error("User not found.");
+        const current = Number(user.level || 1);
+        const newLevel = current > 1 ? current - 1 : 1;
+        if (current === newLevel) {
+          setStatus(`User is already at minimum level.`, "err");
+          return;
+        }
+        await updateUserFields(user.uid, { level: newLevel });
+        setStatus(`Decreased level for ${user.username || user.uid} to ${newLevel}.`, "ok");
+        await loadUsers();
+      } catch (e) {
+        setStatus(e.message, "err");
+      } finally {
+        removeLevelBtn.disabled = false;
+      }
+    });
+
+    banBtn.addEventListener("click", async () => {
+      const identifier = lookupInput.value.trim();
+      if (!identifier) return setStatus("Enter user identifier.", "err");
+      if (!confirm("Are you sure you want to ban this user?")) return;
+      banBtn.disabled = true;
+      try {
+        const user = await findUser(identifier);
+        if (!user) throw new Error("User not found.");
+        await updateRankForUid(user.uid, "banned");
+        setStatus(`User ${user.username || user.uid} has been banned.`, "ok");
+        await loadUsers();
+      } catch (e) {
+        setStatus(e.message, "err");
+      } finally {
+        banBtn.disabled = false;
       }
     });
 
