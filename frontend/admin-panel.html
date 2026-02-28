@@ -416,27 +416,54 @@
         const action = document.createElement("td");
         const wrap = document.createElement("div");
         wrap.className = "row-actions";
-        const select = createRankSelect(user.rank || "unranked");
-        const save = document.createElement("button");
-        save.type = "button";
-        save.className = "primary";
-        save.textContent = "Edit User";
-        save.addEventListener("click", async () => {
-          save.disabled = true;
-          try {
-            await updateRankForUid(user.uid, select.value);
-            rank.textContent = select.value;
-            user.rank = select.value;
-            setStatus(`Updated ${user.username || user.uid} to rank ${select.value}.`, "ok");
-          } catch (error) {
-            console.error("Rank update error:", error);
-            setStatus(error?.message || "Failed to update rank.", "err");
-          } finally {
-            save.disabled = false;
-          }
+
+        const editBtn = document.createElement("button");
+        editBtn.type = "button";
+        editBtn.className = "primary";
+        editBtn.textContent = "Edit User";
+
+        editBtn.addEventListener("click", () => {
+          wrap.innerHTML = "";
+          const select = createRankSelect(user.rank || "unranked");
+
+          const saveBtn = document.createElement("button");
+          saveBtn.type = "button";
+          saveBtn.className = "primary";
+          saveBtn.textContent = "Save";
+
+          const cancelBtn = document.createElement("button");
+          cancelBtn.type = "button";
+          cancelBtn.textContent = "Cancel";
+
+          saveBtn.addEventListener("click", async () => {
+            saveBtn.disabled = true;
+            cancelBtn.disabled = true;
+            try {
+              await updateRankForUid(user.uid, select.value);
+              rank.textContent = select.value;
+              user.rank = select.value;
+              setStatus(`Updated ${user.username || user.uid} to rank ${select.value}.`, "ok");
+              wrap.innerHTML = "";
+              wrap.appendChild(editBtn);
+            } catch (error) {
+              console.error("Rank update error:", error);
+              setStatus(error?.message || "Failed to update rank.", "err");
+              saveBtn.disabled = false;
+              cancelBtn.disabled = false;
+            }
+          });
+
+          cancelBtn.addEventListener("click", () => {
+            wrap.innerHTML = "";
+            wrap.appendChild(editBtn);
+          });
+
+          wrap.appendChild(select);
+          wrap.appendChild(saveBtn);
+          wrap.appendChild(cancelBtn);
         });
-        wrap.appendChild(select);
-        wrap.appendChild(save);
+
+        wrap.appendChild(editBtn);
         action.appendChild(wrap);
         tr.appendChild(action);
         rows.appendChild(tr);
