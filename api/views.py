@@ -1,11 +1,13 @@
 from firebase_admin import firestore
+from django.core.exceptions import ValidationError as DjangoValidationError
+from django.core.validators import validate_email
 from rest_framework import status
 from rest_framework.exceptions import NotFound, PermissionDenied, ValidationError
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from .authentication import initialize_firebase
+from .authentication import firebase_auth, initialize_firebase
 from .permissions import IsFirebaseAdmin
 
 USERS_COLLECTION = "users"
@@ -117,27 +119,63 @@ class ProfileMeView(APIView):
     def patch(self, request):
         uid = _auth_uid(request)
         payload = request.data if isinstance(request.data, dict) else {}
-        username = str(payload.get("username", "")).strip()
-        tutorial_completed = payload.get("tutorialCompleted")
+        users_ref = _users_ref()
+        updates = {}
 
-        if username and not (2 <= len(username) <= 32):
-            raise ValidationError({"username": "Display name must be between 2 and 32 characters."})
+        if "username" in payload:
+            username = str(payload.get("username", "")).strip()
+            if not username:
+                raise ValidationError({"username": "Display name is required."})
+            if not (2 <= len(username) <= 32):
+                raise ValidationError({"username": "Display name must be between 2 and 32 characters."})
 
-        updates = {
-            "lastactivedate": firestore.SERVER_TIMESTAMP,
-            "updatedAt": firestore.SERVER_TIMESTAMP,
-        }
-        if username:
+            existing_username = list(users_ref.where("username", "==", username).limit(1).stream())
+            if existing_username and existing_username[0].id != uid:
+                raise ValidationError({"username": "That display name is already taken."})
             updates["username"] = username
-        if tutorial_completed is not None:
+
+        if "email" in payload:
+            email = str(payload.get("email", "")).strip().lower()
+            if not email:
+                raise ValidationError({"email": "Email is required."})
+
+            try:
+                validate_email(email)
+            except DjangoValidationError as exc:
+                raise ValidationError({"email": "Enter a valid email address."}) from exc
+
+            existing_email = list(users_ref.where("email", "==", email).limit(1).stream())
+            if existing_email and existing_email[0].id != uid:
+                raise ValidationError({"email": "That email is already in use."})
+
+            initialize_firebase()
+            if firebase_auth is None:
+                raise ValidationError({"email": "Email updates are unavailable right now."})
+            try:
+                firebase_auth.update_user(uid, email=email)
+            except Exception as exc:
+                raise ValidationError({"email": "Failed to update auth email."}) from exc
+
+            if request.user.email != email:
+                request.user.email = email
+                request.user.save(update_fields=["email"])
+            updates["email"] = email
+        elif request.user.email:
+            updates["email"] = request.user.email.lower()
+
+        if "tutorialCompleted" in payload:
+            tutorial_completed = payload.get("tutorialCompleted")
             if not isinstance(tutorial_completed, bool):
                 raise ValidationError({"tutorialCompleted": "tutorialCompleted must be true or false."})
             updates["tutorialCompleted"] = tutorial_completed
 
-        if request.user.email:
-            updates["email"] = request.user.email.lower()
+        if not updates:
+            raise ValidationError({"detail": "No valid profile fields were provided."})
 
-        user_ref = _users_ref().document(uid)
+        updates["lastactivedate"] = firestore.SERVER_TIMESTAMP
+        updates["updatedAt"] = firestore.SERVER_TIMESTAMP
+
+        user_ref = users_ref.document(uid)
         user_ref.set(updates, merge=True)
         updated = user_ref.get()
         return Response(

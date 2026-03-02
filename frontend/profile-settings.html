@@ -452,7 +452,7 @@
           <input id="display-name" type="text" placeholder="Display Name" maxlength="32" />
         </label>
         <label class="input-wrap">
-          <input id="email-address" type="email" placeholder="Email Address" readonly />
+          <input id="email-address" type="email" placeholder="Email Address" />
         </label>
         <label class="toggles">
           <input id="tutorial-completed" type="checkbox" />
@@ -507,6 +507,18 @@
 
     const USERS_COLLECTION = "users";
     const FRIEND_REQUESTS_COLLECTION = "friendRequests";
+    const API_BASE = (() => {
+      const override = typeof window.API_BASE === "string" ? window.API_BASE.trim() : "";
+      if (override) return override.replace(/\/+$/, "");
+
+      const devPorts = new Set(["3000", "4173", "5173", "5500"]);
+      if (window.location.protocol === "file:" || devPorts.has(window.location.port)) {
+        const host = window.location.hostname || "127.0.0.1";
+        return `http://${host}:8000/api`;
+      }
+
+      return `${window.location.origin}/api`;
+    })();
 
     const friendInput = document.getElementById("friend-input");
     const addFriendButton = document.getElementById("add-friend-btn");
@@ -531,6 +543,7 @@
     let outgoingRequests = [];
     let incomingRequests = [];
     let pendingRenderToken = 0;
+    let activeIdToken = "";
 
     function setProfileStatus(message, type = "") {
       profileStatus.textContent = message;
@@ -538,6 +551,42 @@
       if (type) {
         profileStatus.classList.add(type);
       }
+    }
+
+    function extractApiError(payload, status) {
+      if (payload?.detail && typeof payload.detail === "string") return payload.detail;
+      if (payload && typeof payload === "object") {
+        for (const value of Object.values(payload)) {
+          if (typeof value === "string") return value;
+          if (Array.isArray(value) && value.length > 0) return String(value[0]);
+        }
+      }
+      return `Request failed (${status})`;
+    }
+
+    async function apiRequest(path, { method = "GET", token = "", body = null } = {}) {
+      const headers = {};
+      if (token) headers.Authorization = `Bearer ${token}`;
+      if (body !== null) headers["Content-Type"] = "application/json";
+
+      const response = await fetch(`${API_BASE}${path}`, {
+        method,
+        headers,
+        body: body === null ? undefined : JSON.stringify(body)
+      });
+
+      let payload = null;
+      try {
+        payload = await response.json();
+      } catch (_error) {
+        payload = null;
+      }
+
+      if (!response.ok) {
+        throw new Error(extractApiError(payload, response.status));
+      }
+
+      return payload;
     }
 
     function toNumber(value, fallback = 0) {
@@ -563,7 +612,7 @@
 
     function setProfileInputsDisabled(disabled) {
       displayNameInput.disabled = disabled;
-      emailInput.disabled = true;
+      emailInput.disabled = disabled;
       tutorialCompletedInput.disabled = disabled;
       saveProfileButton.disabled = disabled;
       changePasswordButton.disabled = disabled;
@@ -775,27 +824,40 @@
       }
 
       const username = displayNameInput.value.trim();
+      const email = emailInput.value.trim().toLowerCase();
       if (username.length < 2 || username.length > 32) {
         setProfileStatus("Display name must be between 2 and 32 characters.", "err");
+        return;
+      }
+      if (!email) {
+        setProfileStatus("Email is required.", "err");
         return;
       }
 
       saveProfileButton.disabled = true;
       setProfileStatus("Saving profile...");
       try {
-        await updateDoc(doc(db, USERS_COLLECTION, currentUser.uid), {
-          username,
-          email: (emailInput.value || currentUser.email || "").toLowerCase(),
-          tutorialCompleted: tutorialCompletedInput.checked,
-          lastactivedate: serverTimestamp()
+        activeIdToken = await currentUser.getIdToken();
+        const payload = await apiRequest("/profile/me", {
+          method: "PATCH",
+          token: activeIdToken,
+          body: {
+            username,
+            email,
+            tutorialCompleted: tutorialCompletedInput.checked
+          }
         });
 
         await updateProfile(currentUser, { displayName: username });
+        if (auth.currentUser) {
+          await auth.currentUser.getIdToken(true);
+          await auth.currentUser.reload();
+        }
 
-        currentProfile = {
+        currentProfile = payload?.profile || {
           ...(currentProfile || {}),
           username,
-          email: (emailInput.value || currentUser.email || "").toLowerCase(),
+          email,
           tutorialCompleted: tutorialCompletedInput.checked
         };
         hydrateProfileForm(currentProfile, currentUser);
@@ -886,6 +948,7 @@
       if (!user) {
         currentUser = null;
         currentProfile = null;
+        activeIdToken = "";
         clearFriendRequestListeners();
         setProfileInputsDisabled(true);
         displayNameInput.value = "";
@@ -908,13 +971,19 @@
       currentUser = user;
       setProfileInputsDisabled(false);
       try {
-        const me = await getDoc(doc(db, USERS_COLLECTION, user.uid));
-        currentProfile = me.exists() ? me.data() : {};
+        activeIdToken = await user.getIdToken();
+        const payload = await apiRequest("/profile/me", { token: activeIdToken });
+        currentProfile = payload?.profile || {};
         hydrateProfileForm(currentProfile, user);
         setProfileStatus("Loaded profile settings.");
       } catch (error) {
         console.error("Profile load error:", error);
-        currentProfile = {};
+        try {
+          const me = await getDoc(doc(db, USERS_COLLECTION, user.uid));
+          currentProfile = me.exists() ? me.data() : {};
+        } catch (_fallbackError) {
+          currentProfile = {};
+        }
         hydrateProfileForm(currentProfile, user);
         setProfileStatus(error?.message || "Profile loaded with limited access.", "err");
       }
