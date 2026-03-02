@@ -282,13 +282,25 @@
 
   <script type="module" src="./nav.js"></script>
   <script type="module">
-    import { auth } from "./firebase.js";
+    import { auth, db } from "./firebase.js";
     import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-auth.js";
     import { collection, doc, getDoc, getDocs, limit, query, serverTimestamp, updateDoc, where } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore.js";
 
     const USERS_COLLECTION = "users";
     const ADMIN_RANKS = new Set(["admin", "co-owner", "owner"]);
     const RANK_OPTIONS = ["player", "unranked", "mod", "admin", "Co-Owner", "owner"];
+    const API_BASE = (() => {
+      const override = typeof window.API_BASE === "string" ? window.API_BASE.trim() : "";
+      if (override) return override.replace(/\/+$/, "");
+
+      const devPorts = new Set(["3000", "4173", "5173", "5500"]);
+      if (window.location.protocol === "file:" || devPorts.has(window.location.port)) {
+        const host = window.location.hostname || "127.0.0.1";
+        return `http://${host}:8000/api`;
+      }
+
+      return `${window.location.origin}/api`;
+    })();
 
     const adminMeta = document.getElementById("admin-meta");
     const statusEl = document.getElementById("status");
@@ -529,7 +541,7 @@
     });
 
     onAuthStateChanged(auth, async (user) => {
-        if (!user) {
+      if (!user) {
         activeIdToken = "";
         adminMeta.textContent = "Not logged in.";
         tools.classList.add("hidden");

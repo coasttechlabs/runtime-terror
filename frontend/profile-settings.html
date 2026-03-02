@@ -177,6 +177,59 @@
       max-width: 520px;
     }
 
+    .profile-status {
+      margin: -8px 0 10px;
+      min-height: 20px;
+      color: var(--muted);
+      font-size: 0.95rem;
+    }
+
+    .profile-status.ok {
+      color: var(--line);
+    }
+
+    .profile-status.err {
+      color: #ff8f8f;
+    }
+
+    .toggles {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      color: var(--muted);
+    }
+
+    .toggles input {
+      width: auto;
+      accent-color: var(--line);
+      transform: scale(1.1);
+    }
+
+    .stats-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 10px;
+    }
+
+    .stat {
+      border: 1px solid rgba(188, 199, 224, 0.25);
+      background: rgba(255, 255, 255, 0.03);
+      padding: 10px 12px;
+    }
+
+    .stat-label {
+      color: var(--muted);
+      font-size: 0.85rem;
+      text-transform: uppercase;
+      letter-spacing: 0.8px;
+    }
+
+    .stat-value {
+      margin-top: 6px;
+      color: #e6e9ee;
+      font-size: 1rem;
+    }
+
     .friends {
       margin-top: 26px;
       max-width: 720px;
@@ -394,15 +447,42 @@
     <section class="content" aria-label="Account settings">
       <h1>Profile Settings</h1>
       <form class="form-grid">
+        <p class="profile-status" id="profile-status">Log in to edit your profile.</p>
         <label class="input-wrap">
-          <input type="text" placeholder="Display Name" />
+          <input id="display-name" type="text" placeholder="Display Name" maxlength="32" />
         </label>
         <label class="input-wrap">
-          <input type="email" placeholder="Email Address" />
+          <input id="email-address" type="email" placeholder="Email Address" readonly />
         </label>
+        <label class="toggles">
+          <input id="tutorial-completed" type="checkbox" />
+          Tutorial Completed
+        </label>
+        <div class="stats-grid" aria-label="Profile stats">
+          <div class="stat">
+            <div class="stat-label">Rank</div>
+            <div class="stat-value" id="profile-rank">-</div>
+          </div>
+          <div class="stat">
+            <div class="stat-label">Role</div>
+            <div class="stat-value" id="profile-role">-</div>
+          </div>
+          <div class="stat">
+            <div class="stat-label">Level</div>
+            <div class="stat-value" id="profile-level">0</div>
+          </div>
+          <div class="stat">
+            <div class="stat-label">Current Streak</div>
+            <div class="stat-value" id="profile-current-streak">0</div>
+          </div>
+          <div class="stat">
+            <div class="stat-label">Longest Streak</div>
+            <div class="stat-value" id="profile-longest-streak">0</div>
+          </div>
+        </div>
         <div class="actions">
-          <button class="action-btn primary" type="button">Save</button>
-          <button class="action-btn" type="button">Change Password</button>
+          <button id="save-profile-btn" class="action-btn primary" type="button">Save</button>
+          <button id="change-password-btn" class="action-btn" type="button">Change Password</button>
         </div>
       </form>
 
@@ -422,7 +502,7 @@
   <script type="module" src="./nav.js"></script>
   <script type="module">
     import { auth, db } from "./firebase.js";
-    import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-auth.js";
+    import { onAuthStateChanged, sendPasswordResetEmail, updateProfile } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-auth.js";
     import { addDoc, collection, doc, getDoc, getDocs, limit, onSnapshot, query, serverTimestamp, updateDoc, where } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore.js";
 
     const USERS_COLLECTION = "users";
@@ -432,6 +512,17 @@
     const addFriendButton = document.getElementById("add-friend-btn");
     const friendList = document.getElementById("friend-list");
     const friendsStatus = document.getElementById("friends-status");
+    const profileStatus = document.getElementById("profile-status");
+    const displayNameInput = document.getElementById("display-name");
+    const emailInput = document.getElementById("email-address");
+    const tutorialCompletedInput = document.getElementById("tutorial-completed");
+    const saveProfileButton = document.getElementById("save-profile-btn");
+    const changePasswordButton = document.getElementById("change-password-btn");
+    const rankValue = document.getElementById("profile-rank");
+    const roleValue = document.getElementById("profile-role");
+    const levelValue = document.getElementById("profile-level");
+    const currentStreakValue = document.getElementById("profile-current-streak");
+    const longestStreakValue = document.getElementById("profile-longest-streak");
 
     let currentUser = null;
     let currentProfile = null;
@@ -440,6 +531,43 @@
     let outgoingRequests = [];
     let incomingRequests = [];
     let pendingRenderToken = 0;
+
+    function setProfileStatus(message, type = "") {
+      profileStatus.textContent = message;
+      profileStatus.classList.remove("ok", "err");
+      if (type) {
+        profileStatus.classList.add(type);
+      }
+    }
+
+    function toNumber(value, fallback = 0) {
+      const n = Number(value);
+      return Number.isFinite(n) ? n : fallback;
+    }
+
+    function longestStreakFrom(profile) {
+      return profile?.longestStreak ?? profile?.longeststreak ?? 0;
+    }
+
+    function hydrateProfileForm(profile, user) {
+      displayNameInput.value = profile?.username || user?.displayName || "";
+      emailInput.value = profile?.email || user?.email || "";
+      tutorialCompletedInput.checked = Boolean(profile?.tutorialCompleted);
+
+      rankValue.textContent = profile?.rank || "unranked";
+      roleValue.textContent = profile?.role || "player";
+      levelValue.textContent = String(toNumber(profile?.level, 0));
+      currentStreakValue.textContent = String(toNumber(profile?.currentStreak, 0));
+      longestStreakValue.textContent = String(toNumber(longestStreakFrom(profile), 0));
+    }
+
+    function setProfileInputsDisabled(disabled) {
+      displayNameInput.disabled = disabled;
+      emailInput.disabled = true;
+      tutorialCompletedInput.disabled = disabled;
+      saveProfileButton.disabled = disabled;
+      changePasswordButton.disabled = disabled;
+    }
 
     function setStatus(message, type = "") {
       friendsStatus.textContent = message;
@@ -640,6 +768,64 @@
       }
     }
 
+    saveProfileButton.addEventListener("click", async () => {
+      if (!currentUser) {
+        setProfileStatus("Log in to edit your profile.", "err");
+        return;
+      }
+
+      const username = displayNameInput.value.trim();
+      if (username.length < 2 || username.length > 32) {
+        setProfileStatus("Display name must be between 2 and 32 characters.", "err");
+        return;
+      }
+
+      saveProfileButton.disabled = true;
+      setProfileStatus("Saving profile...");
+      try {
+        await updateDoc(doc(db, USERS_COLLECTION, currentUser.uid), {
+          username,
+          email: (emailInput.value || currentUser.email || "").toLowerCase(),
+          tutorialCompleted: tutorialCompletedInput.checked,
+          lastactivedate: serverTimestamp()
+        });
+
+        await updateProfile(currentUser, { displayName: username });
+
+        currentProfile = {
+          ...(currentProfile || {}),
+          username,
+          email: (emailInput.value || currentUser.email || "").toLowerCase(),
+          tutorialCompleted: tutorialCompletedInput.checked
+        };
+        hydrateProfileForm(currentProfile, currentUser);
+        setProfileStatus("Profile saved.", "ok");
+      } catch (error) {
+        console.error("Profile save error:", error);
+        setProfileStatus(error?.message || "Failed to save profile.", "err");
+      } finally {
+        saveProfileButton.disabled = false;
+      }
+    });
+
+    changePasswordButton.addEventListener("click", async () => {
+      if (!currentUser?.email) {
+        setProfileStatus("No email is linked to this account.", "err");
+        return;
+      }
+      changePasswordButton.disabled = true;
+      setProfileStatus("Sending password reset email...");
+      try {
+        await sendPasswordResetEmail(auth, currentUser.email);
+        setProfileStatus("Password reset email sent.", "ok");
+      } catch (error) {
+        console.error("Password reset error:", error);
+        setProfileStatus(error?.message || "Failed to send password reset email.", "err");
+      } finally {
+        changePasswordButton.disabled = false;
+      }
+    });
+
     addFriendButton.addEventListener("click", async () => {
       const identifier = friendInput.value.trim();
       if (!identifier) {
@@ -701,6 +887,16 @@
         currentUser = null;
         currentProfile = null;
         clearFriendRequestListeners();
+        setProfileInputsDisabled(true);
+        displayNameInput.value = "";
+        emailInput.value = "";
+        tutorialCompletedInput.checked = false;
+        rankValue.textContent = "-";
+        roleValue.textContent = "-";
+        levelValue.textContent = "0";
+        currentStreakValue.textContent = "0";
+        longestStreakValue.textContent = "0";
+        setProfileStatus("Log in to edit your profile.", "err");
         setStatus("Log in to send friend requests.", "err");
         addFriendButton.disabled = true;
         friendInput.disabled = true;
@@ -710,8 +906,18 @@
       }
 
       currentUser = user;
-      const me = await getDoc(doc(db, USERS_COLLECTION, user.uid));
-      currentProfile = me.exists() ? me.data() : {};
+      setProfileInputsDisabled(false);
+      try {
+        const me = await getDoc(doc(db, USERS_COLLECTION, user.uid));
+        currentProfile = me.exists() ? me.data() : {};
+        hydrateProfileForm(currentProfile, user);
+        setProfileStatus("Loaded profile settings.");
+      } catch (error) {
+        console.error("Profile load error:", error);
+        currentProfile = {};
+        hydrateProfileForm(currentProfile, user);
+        setProfileStatus(error?.message || "Profile loaded with limited access.", "err");
+      }
       friendInput.disabled = false;
       addFriendButton.disabled = false;
       setStatus("Send a friend request by username or email.");

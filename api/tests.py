@@ -30,7 +30,6 @@ class FirebaseAuthenticationTests(TestCase):
         self.assertEqual(user.email, "admin@example.com")
         self.assertEqual(claims["admin"], True)
 
-
 class IsFirebaseAdminTests(TestCase):
     def test_allows_admin_claim(self):
         request = APIRequestFactory().get("/api/admin/me")

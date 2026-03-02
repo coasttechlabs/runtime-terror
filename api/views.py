@@ -1,6 +1,6 @@
 from firebase_admin import firestore
 from rest_framework import status
-from rest_framework.exceptions import NotFound, ValidationError
+from rest_framework.exceptions import NotFound, PermissionDenied, ValidationError
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
@@ -9,12 +9,23 @@ from .authentication import initialize_firebase
 from .permissions import IsFirebaseAdmin
 
 USERS_COLLECTION = "users"
+FRIEND_REQUESTS_COLLECTION = "friendRequests"
 RANK_OPTIONS = {"player", "unranked", "mod", "admin", "co-owner", "owner"}
+FRIEND_REQUEST_STATUS = {"pending", "accepted", "declined"}
 
 
 def _users_ref():
     initialize_firebase()
     return firestore.client().collection(USERS_COLLECTION)
+
+
+def _friend_requests_ref():
+    initialize_firebase()
+    return firestore.client().collection(FRIEND_REQUESTS_COLLECTION)
+
+
+def _auth_uid(request):
+    return request.user.username
 
 
 def _serialize_user(doc_snapshot):
@@ -25,6 +36,213 @@ def _serialize_user(doc_snapshot):
         "email": data.get("email"),
         "rank": data.get("rank", "unranked"),
     }
+
+
+def _serialize_profile(uid, email, data):
+    return {
+        "uid": uid,
+        "email": data.get("email") or email or "",
+        "username": data.get("username", ""),
+        "rank": data.get("rank", "unranked"),
+        "role": data.get("role", "player"),
+        "level": data.get("level", 0),
+        "currentStreak": data.get("currentStreak", 0),
+        "longestStreak": data.get("longestStreak", data.get("longeststreak", 0)),
+        "tutorialCompleted": bool(data.get("tutorialCompleted", False)),
+    }
+
+
+def _usernames_map(uids):
+    users_ref = _users_ref()
+    resolved = {}
+    for uid in uids:
+        if uid in resolved:
+            continue
+        snapshot = users_ref.document(uid).get()
+        if snapshot.exists:
+            data = snapshot.to_dict() or {}
+            resolved[uid] = data.get("username") or uid
+        else:
+            resolved[uid] = uid
+    return resolved
+
+
+def _serialize_friend_request(snapshot, usernames_by_uid):
+    data = snapshot.to_dict() or {}
+    from_uid = data.get("fromuserid", "")
+    to_uid = data.get("touserid", "")
+    return {
+        "id": snapshot.id,
+        "fromuserid": from_uid,
+        "touserid": to_uid,
+        "fromUsername": usernames_by_uid.get(from_uid, from_uid),
+        "toUsername": usernames_by_uid.get(to_uid, to_uid),
+        "status": data.get("status", "pending"),
+        "createdAt": data.get("createdAt"),
+        "respondedAt": data.get("respondedAt"),
+    }
+
+
+def _find_user_by_identifier(identifier):
+    users_ref = _users_ref()
+    raw = str(identifier or "").strip()
+    if not raw:
+        return None
+
+    direct = users_ref.document(raw).get()
+    if direct.exists:
+        return direct
+
+    by_username = list(users_ref.where("username", "==", raw).limit(1).stream())
+    if by_username:
+        return by_username[0]
+
+    by_email = list(users_ref.where("email", "==", raw.lower()).limit(1).stream())
+    if by_email:
+        return by_email[0]
+
+    return None
+
+
+class ProfileMeView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        uid = _auth_uid(request)
+        email = request.user.email or ""
+        snapshot = _users_ref().document(uid).get()
+        data = snapshot.to_dict() if snapshot.exists else {}
+        return Response({"profile": _serialize_profile(uid, email, data)})
+
+    def patch(self, request):
+        uid = _auth_uid(request)
+        payload = request.data if isinstance(request.data, dict) else {}
+        username = str(payload.get("username", "")).strip()
+        tutorial_completed = payload.get("tutorialCompleted")
+
+        if username and not (2 <= len(username) <= 32):
+            raise ValidationError({"username": "Display name must be between 2 and 32 characters."})
+
+        updates = {
+            "lastactivedate": firestore.SERVER_TIMESTAMP,
+            "updatedAt": firestore.SERVER_TIMESTAMP,
+        }
+        if username:
+            updates["username"] = username
+        if tutorial_completed is not None:
+            if not isinstance(tutorial_completed, bool):
+                raise ValidationError({"tutorialCompleted": "tutorialCompleted must be true or false."})
+            updates["tutorialCompleted"] = tutorial_completed
+
+        if request.user.email:
+            updates["email"] = request.user.email.lower()
+
+        user_ref = _users_ref().document(uid)
+        user_ref.set(updates, merge=True)
+        updated = user_ref.get()
+        return Response(
+            {
+                "profile": _serialize_profile(
+                    uid,
+                    request.user.email or "",
+                    updated.to_dict() if updated.exists else {},
+                )
+            },
+            status=status.HTTP_200_OK,
+        )
+
+
+class FriendRequestsView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        uid = _auth_uid(request)
+        requests_ref = _friend_requests_ref()
+
+        outgoing = list(requests_ref.where("fromuserid", "==", uid).stream())
+        incoming = list(requests_ref.where("touserid", "==", uid).stream())
+        all_requests = outgoing + incoming
+
+        user_ids = set()
+        for entry in all_requests:
+            data = entry.to_dict() or {}
+            user_ids.add(data.get("fromuserid", ""))
+            user_ids.add(data.get("touserid", ""))
+
+        user_ids.discard("")
+        usernames = _usernames_map(user_ids)
+
+        serialized_outgoing = [_serialize_friend_request(entry, usernames) for entry in outgoing]
+        serialized_incoming = [_serialize_friend_request(entry, usernames) for entry in incoming]
+        return Response({"outgoing": serialized_outgoing, "incoming": serialized_incoming})
+
+    def post(self, request):
+        uid = _auth_uid(request)
+        payload = request.data if isinstance(request.data, dict) else {}
+        identifier = str(payload.get("identifier", "")).strip()
+        if not identifier:
+            raise ValidationError({"identifier": "Identifier is required."})
+
+        target = _find_user_by_identifier(identifier)
+        if target is None or not target.exists:
+            raise NotFound("User not found.")
+
+        target_uid = target.id
+        if target_uid == uid:
+            raise ValidationError({"identifier": "You cannot send a request to yourself."})
+
+        requests_ref = _friend_requests_ref()
+        existing = list(requests_ref.where("fromuserid", "==", uid).where("touserid", "==", target_uid).stream())
+        existing += list(requests_ref.where("fromuserid", "==", target_uid).where("touserid", "==", uid).stream())
+
+        for item in existing:
+            state = (item.to_dict() or {}).get("status", "")
+            if state == "pending":
+                raise ValidationError({"identifier": "A pending friend request already exists."})
+            if state == "accepted":
+                raise ValidationError({"identifier": "You are already friends."})
+
+        created_ref, _ = requests_ref.add(
+            {
+                "fromuserid": uid,
+                "touserid": target_uid,
+                "status": "pending",
+                "createdAt": firestore.SERVER_TIMESTAMP,
+            }
+        )
+        created = created_ref.get()
+        usernames = _usernames_map({uid, target_uid})
+        return Response({"request": _serialize_friend_request(created, usernames)}, status=status.HTTP_201_CREATED)
+
+
+class FriendRequestDetailView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def patch(self, request, request_id):
+        uid = _auth_uid(request)
+        payload = request.data if isinstance(request.data, dict) else {}
+        next_status = str(payload.get("status", "")).strip().lower()
+        if next_status not in FRIEND_REQUEST_STATUS - {"pending"}:
+            raise ValidationError({"status": "Status must be accepted or declined."})
+
+        ref = _friend_requests_ref().document(request_id)
+        snapshot = ref.get()
+        if not snapshot.exists:
+            raise NotFound("Friend request not found.")
+
+        data = snapshot.to_dict() or {}
+        if data.get("touserid") != uid:
+            raise PermissionDenied("Only the recipient can respond to this request.")
+
+        if data.get("status") != "pending":
+            raise ValidationError({"status": "This request has already been handled."})
+
+        ref.set({"status": next_status, "respondedAt": firestore.SERVER_TIMESTAMP}, merge=True)
+        updated = ref.get()
+        user_ids = {data.get("fromuserid", ""), data.get("touserid", "")}
+        user_ids.discard("")
+        usernames = _usernames_map(user_ids)
+        return Response({"request": _serialize_friend_request(updated, usernames)}, status=status.HTTP_200_OK)
 
 
 class AdminHealthView(APIView):
