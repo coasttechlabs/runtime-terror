@@ -25,3 +25,8 @@
   from = "/profile-settings"
   to = "/profile-settings.html"
   status = 301
+
+[[redirects]]
+  from = "/password-reset"
+  to = "/password-reset.html"
+  status = 301
