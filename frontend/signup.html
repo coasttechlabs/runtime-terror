@@ -121,6 +121,10 @@
       transition: border-color 120ms ease, box-shadow 120ms ease;
     }
 
+    .input-wrap.password-wrap {
+      position: relative;
+    }
+
     .input-wrap:focus-within {
       border-color: var(--line);
       box-shadow: 0 0 0 2px rgba(28, 255, 122, 0.2);
@@ -135,6 +139,32 @@
       font-family: inherit;
       background: transparent;
       color: #e4e9f0;
+    }
+
+    .input-wrap.password-wrap input {
+      padding-right: 92px;
+    }
+
+    .input-wrap.password-wrap .password-toggle {
+      position: absolute;
+      right: 8px;
+      top: 50%;
+      transform: translateY(-50%);
+      border: 0;
+      background: transparent;
+      color: #a5aabc;
+      font-size: 0.9rem;
+      text-transform: uppercase;
+      letter-spacing: 0.6px;
+      font-family: inherit;
+      cursor: pointer;
+      padding: 6px 8px;
+      border-radius: 4px;
+    }
+
+    .input-wrap.password-wrap .password-toggle:hover {
+      color: #f2f2f2;
+      background: rgba(255, 255, 255, 0.06);
     }
 
     input::placeholder {
@@ -275,12 +305,14 @@
           <input id="email" name="email" type="email" placeholder="Email" required />
         </label>
 
-        <label class="input-wrap">
+        <label class="input-wrap password-wrap">
           <input id="password" name="password" type="password" placeholder="Password" required />
+          <button class="password-toggle" id="toggle-signup-password" type="button" aria-label="Show password">Show</button>
         </label>
 
-        <label class="input-wrap">
+        <label class="input-wrap password-wrap">
           <input id="confirmPassword" name="confirmPassword" type="password" placeholder="Confirm Password" required />
+          <button class="password-toggle" id="toggle-confirm-password" type="button" aria-label="Show confirm password">Show</button>
         </label>
       </form>
     </div>
@@ -312,6 +344,20 @@
 
     const form = document.getElementById("signup-form");
     const loginButton = document.getElementById("login-button");
+    const toggleSignupPassword = document.getElementById("toggle-signup-password");
+    const toggleConfirmPassword = document.getElementById("toggle-confirm-password");
+
+    function bindPasswordToggle(toggleButton, input) {
+      toggleButton.addEventListener("click", () => {
+        const shouldShow = input.type === "password";
+        input.type = shouldShow ? "text" : "password";
+        toggleButton.textContent = shouldShow ? "Hide" : "Show";
+        toggleButton.setAttribute("aria-label", shouldShow ? "Hide password" : "Show password");
+      });
+    }
+
+    bindPasswordToggle(toggleSignupPassword, document.getElementById("password"));
+    bindPasswordToggle(toggleConfirmPassword, document.getElementById("confirmPassword"));
 
     form.addEventListener("submit", async (event) => {
       event.preventDefault();
