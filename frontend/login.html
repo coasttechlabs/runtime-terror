@@ -371,6 +371,10 @@
       alert("Password reset email sent.");
     } catch (error) {
       console.error("Password reset email error:", error);
+      if (error?.code === "auth/unauthorized-continue-uri") {
+        alert(`Firebase does not allow this domain yet: ${window.location.origin}. Add it in Firebase Auth > Settings > Authorized domains.`);
+        return;
+      }
       alert(error?.message || "Failed to send password reset email.");
     }
   });
