@@ -32,23 +32,29 @@ function makeLogoutLink() {
   return anchor;
 }
 
-function renderNav(nav, user) {
-  nav.innerHTML = "";
+function getLinksForUser(user) {
+  const links = [...PUBLIC_LINKS];
+  if (user) {
+    links.push(...PRIVATE_LINKS, { href: "#", label: "Logout", action: "logout" });
+  } else {
+    links.push({ href: "./login.html", label: "Login" }, { href: "./signup.html", label: "Sign Up" });
+  }
+  return links;
+}
 
-  PUBLIC_LINKS.forEach((link) => {
+function linksSignature(links) {
+  return links.map((link) => `${link.label}|${link.href}|${link.action || ""}`).join("::");
+}
+
+function renderNav(nav, links) {
+  nav.replaceChildren();
+  links.forEach((link) => {
+    if (link.action === "logout") {
+      nav.appendChild(makeLogoutLink());
+      return;
+    }
     nav.appendChild(makeLink(link));
   });
-
-  if (user) {
-    PRIVATE_LINKS.forEach((link) => {
-      nav.appendChild(makeLink(link));
-    });
-    nav.appendChild(makeLogoutLink());
-    return;
-  }
-
-  nav.appendChild(makeLink({ href: "./login.html", label: "Login" }));
-  nav.appendChild(makeLink({ href: "./signup.html", label: "Sign Up" }));
 }
 
 function wireLogout(nav) {
@@ -71,9 +77,15 @@ function wireLogout(nav) {
 
 const nav = getNavElement();
 if (nav) {
-  renderNav(nav, auth.currentUser);
   wireLogout(nav);
+  let lastRenderedSignature = null;
+
   onAuthStateChanged(auth, (user) => {
-    renderNav(nav, user);
+    const links = getLinksForUser(user);
+    const nextSignature = linksSignature(links);
+    if (nextSignature === lastRenderedSignature) return;
+
+    renderNav(nav, links);
+    lastRenderedSignature = nextSignature;
   });
 }

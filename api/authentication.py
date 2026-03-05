@@ -32,11 +32,11 @@ def initialize_firebase():
             raise exceptions.AuthenticationFailed("FIREBASE_CREDENTIALS_JSON is not valid JSON") from exc
         except Exception as exc:
             raise exceptions.AuthenticationFailed("Failed to load Firebase credentials JSON") from exc
-    elif settings.FIREBASE_CREDENTIALS_FILE:
+    elif settings.FIREBASE_CREDENTIALS_KEY:
         try:
-            cred = credentials.Certificate(settings.FIREBASE_CREDENTIALS_FILE)
+            cred = credentials.Certificate(settings.FIREBASE_CREDENTIALS_KEY)
         except Exception as exc:
-            raise exceptions.AuthenticationFailed("Failed to load FIREBASE_CREDENTIALS_FILE") from exc
+            raise exceptions.AuthenticationFailed("Failed to load FIREBASE_CREDENTIALS_KEY") from exc
 
     options = {}
     if settings.FIREBASE_PROJECT_ID:

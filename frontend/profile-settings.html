@@ -502,23 +502,13 @@
   <script type="module" src="./nav.js"></script>
   <script type="module">
     import { auth, db } from "./firebase.js";
+    import { getApiBase } from "./api-base.js";
     import { onAuthStateChanged, sendPasswordResetEmail, updateProfile } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-auth.js";
     import { addDoc, collection, doc, getDoc, getDocs, limit, onSnapshot, query, serverTimestamp, updateDoc, where } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore.js";
 
     const USERS_COLLECTION = "users";
     const FRIEND_REQUESTS_COLLECTION = "friendRequests";
-    const API_BASE = (() => {
-      const override = typeof window.API_BASE === "string" ? window.API_BASE.trim() : "";
-      if (override) return override.replace(/\/+$/, "");
-
-      const devPorts = new Set(["3000", "4173", "5173", "5500"]);
-      if (window.location.protocol === "file:" || devPorts.has(window.location.port)) {
-        const host = window.location.hostname || "127.0.0.1";
-        return `http://${host}:8000/api`;
-      }
-
-      return `${window.location.origin}/api`;
-    })();
+    const API_BASE = getApiBase();
 
     const friendInput = document.getElementById("friend-input");
     const addFriendButton = document.getElementById("add-friend-btn");
