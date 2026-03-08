@@ -325,14 +325,20 @@
       });
 
       let payload = null;
+      let rawText = "";
       try {
-        payload = await response.json();
+        rawText = await response.text();
+        payload = rawText ? JSON.parse(rawText) : null;
       } catch (_error) {
         payload = null;
       }
 
       if (!response.ok) {
-        const message = payload?.detail || payload?.rank?.[0] || `Request failed (${response.status})`;
+        const message =
+          payload?.detail ||
+          payload?.rank?.[0] ||
+          (rawText ? rawText.slice(0, 200) : "") ||
+          `Request failed (${response.status})`;
         throw new Error(message);
       }
 
