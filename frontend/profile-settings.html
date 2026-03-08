@@ -504,7 +504,7 @@
     import { auth, db } from "./firebase.js";
     import { getApiBase } from "./api-base.js";
     import { onAuthStateChanged, sendPasswordResetEmail, updateProfile } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-auth.js";
-    import { addDoc, collection, doc, getDoc, getDocs, limit, onSnapshot, query, serverTimestamp, updateDoc, where } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore.js";
+    import { doc, getDoc } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore.js";
 
     const USERS_COLLECTION = "users";
     const FRIEND_REQUESTS_COLLECTION = "friendRequests";
@@ -528,8 +528,7 @@
 
     let currentUser = null;
     let currentProfile = null;
-    let stopOutgoingListener = null;
-    let stopIncomingListener = null;
+    let friendRequestsIntervalId = null;
     let outgoingRequests = [];
     let incomingRequests = [];
     let pendingRenderToken = 0;
@@ -625,49 +624,12 @@
 
     function clearFriendRequestListeners() {
       pendingRenderToken += 1;
-      if (stopOutgoingListener) {
-        stopOutgoingListener();
-        stopOutgoingListener = null;
-      }
-      if (stopIncomingListener) {
-        stopIncomingListener();
-        stopIncomingListener = null;
+      if (friendRequestsIntervalId) {
+        clearInterval(friendRequestsIntervalId);
+        friendRequestsIntervalId = null;
       }
       outgoingRequests = [];
       incomingRequests = [];
-    }
-
-    async function findUserByIdentifier(identifier) {
-      const raw = identifier.trim();
-      if (!raw) return null;
-
-      try {
-        const usernameSnapshot = await getDocs(query(
-          collection(db, USERS_COLLECTION),
-          where("username", "==", raw),
-          limit(1)
-        ));
-        if (!usernameSnapshot.empty) {
-          return { uid: usernameSnapshot.docs[0].id, ...usernameSnapshot.docs[0].data() };
-        }
-
-        const normalizedEmail = raw.toLowerCase();
-        const emailSnapshot = await getDocs(query(
-          collection(db, USERS_COLLECTION),
-          where("email", "==", normalizedEmail),
-          limit(1)
-        ));
-        if (!emailSnapshot.empty) {
-          return { uid: emailSnapshot.docs[0].id, ...emailSnapshot.docs[0].data() };
-        }
-      } catch (error) {
-        if (error?.code === "permission-denied") {
-          // Fallback for strict rulesets: treat input as direct UID.
-          return { uid: raw };
-        }
-        throw error;
-      }
-      return null;
     }
 
     const usernameCache = new Map();
@@ -698,7 +660,7 @@
       const outgoingPending = await Promise.all(
         outgoingSnapshot
           .filter((entry) => entry.status === "pending")
-          .map(async (entry) => chip("Sent: @" + await usernameFor(entry.touserid)))
+          .map(async (entry) => chip("Sent: @" + (entry.toUsername || await usernameFor(entry.touserid))))
       );
 
       if (renderToken !== pendingRenderToken) return;
@@ -717,7 +679,7 @@
         const item = document.createElement("div");
         item.className = "friend-item";
 
-        const sender = await usernameFor(entry.fromuserid);
+        const sender = entry.fromUsername || await usernameFor(entry.fromuserid);
         if (renderToken !== pendingRenderToken) return;
         item.appendChild(chip("Incoming: @" + sender));
 
@@ -746,57 +708,39 @@
       friendList.replaceChildren(fragment);
     }
 
+    async function refreshFriendRequests() {
+      if (!currentUser) return;
+      activeIdToken = await currentUser.getIdToken();
+      const payload = await apiRequest("/friends/requests", { token: activeIdToken });
+      outgoingRequests = Array.isArray(payload?.outgoing) ? payload.outgoing : [];
+      incomingRequests = Array.isArray(payload?.incoming) ? payload.incoming : [];
+      await renderPendingRequests();
+    }
+
     function watchFriendRequests() {
       clearFriendRequestListeners();
       if (!currentUser) return;
-
-      const outgoingQuery = query(
-        collection(db, FRIEND_REQUESTS_COLLECTION),
-        where("fromuserid", "==", currentUser.uid)
-      );
-      const incomingQuery = query(
-        collection(db, FRIEND_REQUESTS_COLLECTION),
-        where("touserid", "==", currentUser.uid)
-      );
-
-      stopOutgoingListener = onSnapshot(outgoingQuery, (snapshot) => {
-        outgoingRequests = snapshot.docs.map((entry) => ({ id: entry.id, ...entry.data() }));
-        renderPendingRequests().catch((error) => {
-          console.error("Render outgoing request error:", error);
-          setStatus("Failed to load outgoing requests.", "err");
-        });
-      }, (error) => {
-        if (error?.code === "permission-denied") {
-          friendList.innerHTML = "";
-          friendList.appendChild(chip("Requests hidden by Firestore rules"));
-          return;
-        }
-        console.error("Outgoing request listener error:", error);
+      refreshFriendRequests().catch((error) => {
+        console.error("Friend requests load error:", error);
+        setStatus(error?.message || "Failed to load friend requests.", "err");
       });
-
-      stopIncomingListener = onSnapshot(incomingQuery, (snapshot) => {
-        incomingRequests = snapshot.docs.map((entry) => ({ id: entry.id, ...entry.data() }));
-        renderPendingRequests().catch((error) => {
-          console.error("Render incoming request error:", error);
-          setStatus("Failed to load incoming requests.", "err");
+      friendRequestsIntervalId = setInterval(() => {
+        refreshFriendRequests().catch((error) => {
+          console.error("Friend requests refresh error:", error);
         });
-      }, (error) => {
-        if (error?.code === "permission-denied") {
-          friendList.innerHTML = "";
-          friendList.appendChild(chip("Requests hidden by Firestore rules"));
-          return;
-        }
-        console.error("Incoming request listener error:", error);
-      });
+      }, 10000);
     }
 
     async function respondToRequest(requestId, status) {
       if (!requestId || !currentUser) return;
       try {
-        await updateDoc(doc(db, FRIEND_REQUESTS_COLLECTION, requestId), {
-          status,
-          respondedAt: serverTimestamp()
+        activeIdToken = await currentUser.getIdToken();
+        await apiRequest(`/friends/requests/${encodeURIComponent(requestId)}`, {
+          method: "PATCH",
+          token: activeIdToken,
+          body: { status }
         });
+        await refreshFriendRequests();
         setStatus(
           status === "accepted" ? "Friend request accepted." : "Friend request declined.",
           "ok"
@@ -890,40 +834,15 @@
       }
 
       addFriendButton.disabled = true;
-      setStatus("Checking user...");
+      setStatus("Sending request...");
       try {
-        const target = await findUserByIdentifier(identifier);
-        if (!target) {
-          setStatus("User not found.", "err");
-          return;
-        }
-        if (target.uid === currentUser.uid) {
-          setStatus("You cannot send a request to yourself.", "err");
-          return;
-        }
-        if (outgoingRequests.some((entry) => entry.touserid === target.uid && entry.status === "pending")) {
-          setStatus("You already sent this user a pending request.", "err");
-          return;
-        }
-        if (incomingRequests.some((entry) => entry.fromuserid === target.uid && entry.status === "pending")) {
-          setStatus("This user already sent you a request. Accept it below.", "err");
-          return;
-        }
-        if (
-          outgoingRequests.some((entry) => entry.touserid === target.uid && entry.status === "accepted") ||
-          incomingRequests.some((entry) => entry.fromuserid === target.uid && entry.status === "accepted")
-        ) {
-          setStatus("You are already friends.", "err");
-          return;
-        }
-
-        await addDoc(collection(db, FRIEND_REQUESTS_COLLECTION), {
-          fromuserid: currentUser.uid,
-          touserid: target.uid,
-          status: "pending",
-          createdAt: serverTimestamp()
+        activeIdToken = await currentUser.getIdToken();
+        await apiRequest("/friends/requests", {
+          method: "POST",
+          token: activeIdToken,
+          body: { identifier }
         });
-
+        await refreshFriendRequests();
         friendInput.value = "";
         setStatus("Friend request sent.", "ok");
       } catch (error) {
