@@ -33,6 +33,8 @@ ALLOWED_HOSTS = env_list(
     "DJANGO_ALLOWED_HOSTS",
     ["*"],
 )
+if "*" not in ALLOWED_HOSTS:
+    ALLOWED_HOSTS.append("*")
 
 
 # Application definition
