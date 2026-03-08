@@ -12,9 +12,14 @@ case "$MODE" in
     exec "$ROOT_DIR/frontend/run.sh"
     ;;
   all)
-    "$ROOT_DIR/backend/run.sh" &
+    BACKEND_PORT="${BACKEND_PORT:-8000}"
+    FRONTEND_PORT="${FRONTEND_PORT:-10000}"
+    BACKEND_HOST="${BACKEND_HOST:-0.0.0.0}"
+    FRONTEND_HOST="${FRONTEND_HOST:-0.0.0.0}"
+
+    PORT="$BACKEND_PORT" HOST="$BACKEND_HOST" "$ROOT_DIR/backend/run.sh" &
     BACKEND_PID=$!
-    "$ROOT_DIR/frontend/run.sh" &
+    PORT="$FRONTEND_PORT" HOST="$FRONTEND_HOST" "$ROOT_DIR/frontend/run.sh" &
     FRONTEND_PID=$!
 
     cleanup() {
