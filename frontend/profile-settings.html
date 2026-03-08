@@ -127,13 +127,6 @@
       padding: 36px 40px 34px;
     }
 
-    .content-grid {
-      display: grid;
-      grid-template-columns: minmax(0, 1.2fr) minmax(360px, 0.8fr);
-      gap: 24px;
-      align-items: start;
-    }
-
     h1 {
       margin: 0 0 30px;
       letter-spacing: 2px;
@@ -240,6 +233,22 @@
       border: 2px solid var(--line-soft);
       padding: 18px;
       background: rgba(5, 7, 10, 0.32);
+    }
+
+    .tab-panel {
+      display: none;
+    }
+
+    .tab-panel.active {
+      display: block;
+    }
+
+    .placeholder-panel {
+      border: 2px solid var(--line-soft);
+      padding: 18px;
+      background: rgba(5, 7, 10, 0.32);
+      color: var(--muted);
+      min-height: 260px;
     }
 
     .friends h2 {
@@ -397,10 +406,6 @@
         padding: 24px 14px 22px;
       }
 
-      .content-grid {
-        grid-template-columns: 1fr;
-      }
-
       .actions {
         grid-template-columns: 1fr;
         max-width: none;
@@ -440,18 +445,18 @@
 
   <main class="frame">
     <aside class="side" aria-label="Profile sections">
-      <button class="side-btn active" type="button" aria-label="Profile">
+      <button class="side-btn active" type="button" aria-label="Profile" data-tab="profile">
         <svg viewBox="0 0 24 24" aria-hidden="true">
           <circle cx="12" cy="7.5" r="3.5"></circle>
           <path d="M5 20c0-3.5 3-6 7-6s7 2.5 7 6"></path>
         </svg>
       </button>
-      <button class="side-btn" type="button" aria-label="Favorites">
+      <button class="side-btn" type="button" aria-label="Favorites" data-tab="friends">
         <svg viewBox="0 0 24 24" aria-hidden="true">
           <path d="M12 20s-7-4.4-7-10a4 4 0 0 1 7-2.5A4 4 0 0 1 19 10c0 5.6-7 10-7 10z"></path>
         </svg>
       </button>
-      <button class="side-btn" type="button" aria-label="Cloud saves">
+      <button class="side-btn" type="button" aria-label="Cloud saves" data-tab="cloud">
         <svg viewBox="0 0 24 24" aria-hidden="true">
           <path d="M8 18h9a4 4 0 0 0 .8-7.9A6 6 0 0 0 6.3 8.7 4.5 4.5 0 0 0 8 18z"></path>
           <path d="M12 16V9"></path>
@@ -462,7 +467,7 @@
 
     <section class="content" aria-label="Account settings">
       <h1>Profile Settings</h1>
-      <div class="content-grid">
+      <section class="tab-panel active" id="panel-profile" aria-label="Profile tab">
         <form class="form-grid">
           <p class="profile-status" id="profile-status">Log in to edit your profile.</p>
           <label class="input-wrap">
@@ -502,7 +507,9 @@
             <button id="change-password-btn" class="action-btn" type="button">Change Password</button>
           </div>
         </form>
+      </section>
 
+      <section class="tab-panel" id="panel-friends" aria-label="Friends tab">
         <section class="friends" aria-label="Friends">
           <h2>Friends</h2>
           <p class="friends-status" id="friends-status">Send a friend request by username or email.</p>
@@ -517,7 +524,14 @@
           <p class="friend-section-title">Added Friends</p>
           <div class="friend-list" id="friend-added-list" aria-label="Added friends"></div>
         </section>
-      </div>
+      </section>
+
+      <section class="tab-panel" id="panel-cloud" aria-label="Cloud saves tab">
+        <section class="placeholder-panel">
+          <h2>Cloud Saves</h2>
+          <p>Cloud saves tools can live here when ready.</p>
+        </section>
+      </section>
     </section>
   </main>
   <script type="module" src="./nav.js"></script>
@@ -546,6 +560,12 @@
     const levelValue = document.getElementById("profile-level");
     const currentStreakValue = document.getElementById("profile-current-streak");
     const longestStreakValue = document.getElementById("profile-longest-streak");
+    const sideButtons = Array.from(document.querySelectorAll(".side-btn[data-tab]"));
+    const tabPanels = {
+      profile: document.getElementById("panel-profile"),
+      friends: document.getElementById("panel-friends"),
+      cloud: document.getElementById("panel-cloud")
+    };
 
     let currentUser = null;
     let currentProfile = null;
@@ -554,6 +574,16 @@
     let incomingRequests = [];
     let pendingRenderToken = 0;
     let activeIdToken = "";
+
+    function setActiveTab(tabName) {
+      sideButtons.forEach((btn) => {
+        btn.classList.toggle("active", btn.dataset.tab === tabName);
+      });
+
+      Object.entries(tabPanels).forEach(([name, panel]) => {
+        panel.classList.toggle("active", name === tabName);
+      });
+    }
 
     function setProfileStatus(message, type = "") {
       profileStatus.textContent = message;
@@ -781,6 +811,12 @@
         });
       }, 10000);
     }
+
+    sideButtons.forEach((btn) => {
+      btn.addEventListener("click", () => {
+        setActiveTab(btn.dataset.tab || "profile");
+      });
+    });
 
     async function respondToRequest(requestId, status) {
       if (!requestId || !currentUser) return;
