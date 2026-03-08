@@ -12,18 +12,34 @@ case "$MODE" in
     exec "$ROOT_DIR/frontend/run.sh"
     ;;
   all)
-    BACKEND_PORT="${BACKEND_PORT:-8000}"
+    # Hosting platforms (e.g. Render) inject PORT for the single public process.
+    # In that environment, default to backend-only unless explicitly overridden.
+    if [[ -n "${PORT:-}" ]]; then
+      BACKEND_PORT="${BACKEND_PORT:-$PORT}"
+      RUN_FRONTEND="${RUN_FRONTEND:-0}"
+    else
+      BACKEND_PORT="${BACKEND_PORT:-8000}"
+      RUN_FRONTEND="${RUN_FRONTEND:-1}"
+    fi
     FRONTEND_PORT="${FRONTEND_PORT:-10000}"
     BACKEND_HOST="${BACKEND_HOST:-0.0.0.0}"
     FRONTEND_HOST="${FRONTEND_HOST:-0.0.0.0}"
 
     PORT="$BACKEND_PORT" HOST="$BACKEND_HOST" "$ROOT_DIR/backend/run.sh" &
     BACKEND_PID=$!
-    PORT="$FRONTEND_PORT" HOST="$FRONTEND_HOST" "$ROOT_DIR/frontend/run.sh" &
-    FRONTEND_PID=$!
+
+    FRONTEND_PID=""
+    if [[ "$RUN_FRONTEND" == "1" ]]; then
+      PORT="$FRONTEND_PORT" HOST="$FRONTEND_HOST" "$ROOT_DIR/frontend/run.sh" &
+      FRONTEND_PID=$!
+    fi
 
     cleanup() {
-      kill "$BACKEND_PID" "$FRONTEND_PID" 2>/dev/null || true
+      if [[ -n "${FRONTEND_PID:-}" ]]; then
+        kill "$BACKEND_PID" "$FRONTEND_PID" 2>/dev/null || true
+      else
+        kill "$BACKEND_PID" 2>/dev/null || true
+      fi
     }
     trap cleanup EXIT INT TERM
 
@@ -31,14 +47,19 @@ case "$MODE" in
       if ! kill -0 "$BACKEND_PID" 2>/dev/null; then
         break
       fi
-      if ! kill -0 "$FRONTEND_PID" 2>/dev/null; then
+      if [[ -n "${FRONTEND_PID:-}" ]] && ! kill -0 "$FRONTEND_PID" 2>/dev/null; then
         break
       fi
       sleep 1
     done
 
-    kill "$BACKEND_PID" "$FRONTEND_PID" 2>/dev/null || true
-    wait "$BACKEND_PID" "$FRONTEND_PID" 2>/dev/null || true
+    if [[ -n "${FRONTEND_PID:-}" ]]; then
+      kill "$BACKEND_PID" "$FRONTEND_PID" 2>/dev/null || true
+      wait "$BACKEND_PID" "$FRONTEND_PID" 2>/dev/null || true
+    else
+      kill "$BACKEND_PID" 2>/dev/null || true
+      wait "$BACKEND_PID" 2>/dev/null || true
+    fi
     ;;
   *)
     echo "Usage: ./run.sh [all|backend|frontend]"
