@@ -15,7 +15,7 @@ def env_bool(name: str, default: bool = False) -> bool:
 
 def env_list(name: str, default: list[str] | None = None) -> list[str]:
     raw = os.getenv(name)
-    if raw is None:
+    if raw is None or not raw.strip():
         return default or []
     return [item.strip() for item in raw.split(",") if item.strip()]
 
