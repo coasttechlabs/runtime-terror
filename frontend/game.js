@@ -180,7 +180,7 @@ void main() {
         else if (u_type == 2) alpha = smoothstep(1.0 - u_param - delta, 1.0 - u_param, d) * (1.0 - smoothstep(1.0 - delta, 1.0, d));
         gl_FragColor = vec4(u_color.rgb, u_color.a * alpha);
     }
-};
+}`;
 
 let state = loadState();
 let battle = null;
@@ -1170,20 +1170,11 @@ function renderArena() {
   const enemyY = enemy.y * (height / 720);
   const playerAmmo = Math.round(cooldownPercent(player) / 10);
 
-<<<<<<< HEAD
-  drawHudText(glTextCtx, player.health, playerAmmo, distanceUnits(playerX, playerY, enemyX, enemyY));
-  drawPlayerBotGL(playerX, playerY, player.health, player.maxHealth, playerAmmo, now, player);
-  drawEnemyBotGL(enemyX, enemyY, enemy.health, enemy.maxHealth, now, enemy);
-  
-  drawShotGL(playerX + 16, playerY - 16, enemyX - 18, enemyY - 6, justFired(player), "#2f44ff");
-  drawShotGL(enemyX - 14, enemyY - 4, playerX + 12, playerY - 12, justFired(enemy), "#ff4338");
-=======
   drawHudText(context, player.health, playerAmmo, distanceUnits(playerX, playerY, enemyX, enemyY));
   drawPlayerBot(context, playerX, playerY, player.health, player.maxHealth, playerAmmo, now, player);
   drawEnemyBot(context, enemyX, enemyY, enemy.health, enemy.maxHealth, now, enemy);
   drawShot(context, playerX + 16 * player.facing, playerY - 16, enemyX - 18 * enemy.facing, enemyY - 6, justFired(player), "#2f44ff");
   drawShot(context, enemyX + 14 * enemy.facing, enemyY - 4, playerX + 12 * player.facing, playerY - 12, justFired(enemy), "#ff4338");
->>>>>>> 41ec694bad23bea719b2639c73d7bf3083ca5e39
 }
 
 function drawHudText(context, hp, ammo, dist) {
@@ -1205,16 +1196,6 @@ function drawPlayerBotGL(x, y, health, maxHealth, ammo, now, actor = null) {
   glSetColor("#3948ff");
   glDrawShape(1, x, y, 25, 25, 0);
 
-<<<<<<< HEAD
-  // 3. Cannon (Line -> Rotated Rect)
-  glSetColor("#0f25ff", 0.95);
-  const cannonLen = 35; 
-  // Position offset to start from center and point top-right (-45 deg)
-  const angle = -Math.PI / 4;
-  const cx = x + Math.cos(angle) * (cannonLen / 2);
-  const cy = y + Math.sin(angle) * (cannonLen / 2);
-  glDrawShape(0, cx, cy, cannonLen/2, 2, angle);
-=======
   context.fillStyle = "#3948ff";
   context.beginPath();
   context.arc(0, 0, 25, 0, Math.PI * 2);
@@ -1226,7 +1207,6 @@ function drawPlayerBotGL(x, y, health, maxHealth, ammo, now, actor = null) {
   context.moveTo(0, 0);
   context.lineTo(26 * (actor?.facing || 1), -26);
   context.stroke();
->>>>>>> 41ec694bad23bea719b2639c73d7bf3083ca5e39
 
   if (actor?.berserkState) {
     glSetColor("#ffd24d");
