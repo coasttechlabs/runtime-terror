@@ -110,6 +110,7 @@ const BOT_TYPES = [
 ];
 
 const dom = {
+  arenaCanvas: document.querySelector("#arena-canvas"),
   encounterValue: document.querySelector("#encounter-value"),
   moneyValue: document.querySelector("#money-value"),
   recordValue: document.querySelector("#record-value"),
@@ -137,7 +138,21 @@ const dom = {
 
 let state = loadState();
 let battle = null;
-let lastBattleReport = "Press Start Encounter to enter the arena.";
+let lastBattleReport = "";
+let arenaFrame = null;
+let autoAdvanceTimeout = null;
+
+function setText(node, value) {
+  if (node) node.textContent = value;
+}
+
+function setWidth(node, value) {
+  if (node) node.style.width = value;
+}
+
+function setDisabled(node, value) {
+  if (node) node.disabled = value;
+}
 
 function defaultState() {
   return {
@@ -309,6 +324,10 @@ function createActor(kind, config) {
 
 function startBattle() {
   if (battle) return;
+  if (autoAdvanceTimeout) {
+    window.clearTimeout(autoAdvanceTimeout);
+    autoAdvanceTimeout = null;
+  }
 
   const playerProfile = getPlayerProfile();
   const enemyBlueprint = getEnemyBlueprint();
@@ -371,6 +390,7 @@ function endBattle(result) {
   state.money += Math.floor(reward);
   maybeGrantSalvage(result);
   state.encounter += 1;
+  autoSpendMoney();
   saveState();
 
   pushLog(finalLogLine);
@@ -380,6 +400,7 @@ function endBattle(result) {
   syncBattleUi();
   renderShops();
   renderInventory();
+  scheduleAutoAdvance();
 }
 
 function calculateLossReward(baseReward, damagePercent) {
@@ -662,6 +683,7 @@ function handlePlayerBerserk() {
 }
 
 function renderShops() {
+  if (!dom.upgradeShop || !dom.berserkShop) return;
   dom.upgradeShop.replaceChildren();
   MODULES.forEach((module) => {
     const currentLevel = state.modules[module.key];
@@ -720,6 +742,7 @@ function renderShops() {
 }
 
 function renderInventory() {
+  if (!dom.uniqueInventory) return;
   dom.uniqueInventory.replaceChildren();
   if (state.salvage.length === 0) {
     const empty = document.createElement("div");
@@ -747,74 +770,84 @@ function highestOwnedTier() {
 }
 
 function syncStaticUi() {
-  dom.encounterValue.textContent = `${state.encounter}`;
-  dom.moneyValue.textContent = `$${state.money}`;
-  dom.recordValue.textContent = `${state.wins}W / ${state.losses}L`;
-  dom.difficultyValue.textContent = getDifficultyLabel(state.encounter);
+  setText(dom.encounterValue, `${state.encounter}`);
+  setText(dom.moneyValue, `$${state.money}`);
+  setText(dom.recordValue, `${state.wins}W / ${state.losses}L`);
+  setText(dom.difficultyValue, getDifficultyLabel(state.encounter));
 }
 
 function syncBattleUi() {
   const playerProfile = getPlayerProfile();
-  dom.playerStats.replaceChildren(...makeStats([
+  if (dom.playerStats) {
+    dom.playerStats.replaceChildren(...makeStats([
     `Damage ${playerProfile.shotDamage}`,
     `Health ${playerProfile.maxHealth}`,
     `Armour ${playerProfile.armorBonus.toFixed(1)}%`,
     `Speed ${playerProfile.speedBonus.toFixed(1)}%`,
     `Elemental ${playerProfile.elementalDamage}`,
     `Berserks ${state.berserks.length}`,
-  ]));
+    ]));
+  }
 
   if (!battle) {
-    dom.enemyName.textContent = "Enemy Bot";
-    dom.playerHealthText.textContent = `${playerProfile.maxHealth} / ${playerProfile.maxHealth}`;
-    dom.enemyHealthText.textContent = "100 / 100";
-    dom.playerHealthBar.style.width = "100%";
-    dom.enemyHealthBar.style.width = "100%";
-    dom.playerCooldownBar.style.width = "0%";
-    dom.enemyCooldownBar.style.width = "0%";
-    dom.playerStatus.textContent = "Ready for deployment.";
-    dom.enemyStatus.textContent = "No active encounter.";
-    dom.enemyStats.replaceChildren(...makeStats([
-      `Weapon ???`,
-      `Damage ???`,
-      `Health ???`,
-      `Armour ???`,
-      `Speed ???`,
-      `Unique drop rolls Tier 7+`,
-    ]));
-    dom.fireButton.disabled = true;
-    dom.berserkButton.disabled = true;
-    dom.startBattle.disabled = false;
-    dom.battleLog.textContent = lastBattleReport;
+    setText(dom.enemyName, "Enemy Bot");
+    setText(dom.playerHealthText, `${playerProfile.maxHealth} / ${playerProfile.maxHealth}`);
+    setText(dom.enemyHealthText, "100 / 100");
+    setWidth(dom.playerHealthBar, "100%");
+    setWidth(dom.enemyHealthBar, "100%");
+    setWidth(dom.playerCooldownBar, "0%");
+    setWidth(dom.enemyCooldownBar, "0%");
+    setText(dom.playerStatus, "Ready");
+    setText(dom.enemyStatus, "");
+    if (dom.enemyStats) {
+      dom.enemyStats.replaceChildren(...makeStats([
+        `Weapon ???`,
+        `Damage ???`,
+        `Health ???`,
+        `Armour ???`,
+        `Speed ???`,
+        `Unique drop rolls Tier 7+`,
+      ]));
+    }
+    setDisabled(dom.fireButton, true);
+    setDisabled(dom.berserkButton, true);
+    setDisabled(dom.startBattle, false);
+    setText(dom.battleLog, lastBattleReport);
+    renderArena();
     return;
   }
 
   const { player, enemy, enemyBlueprint } = battle;
-  dom.enemyName.textContent = enemy.name;
-  dom.playerHealthText.textContent = `${roundNumber(player.health)} / ${roundNumber(player.maxHealth)}`;
-  dom.enemyHealthText.textContent = `${roundNumber(enemy.health)} / ${roundNumber(enemy.maxHealth)}`;
-  dom.playerHealthBar.style.width = `${clamp((player.health / player.maxHealth) * 100, 0, 100)}%`;
-  dom.enemyHealthBar.style.width = `${clamp((enemy.health / enemy.maxHealth) * 100, 0, 100)}%`;
-  dom.playerCooldownBar.style.width = `${cooldownPercent(player)}%`;
-  dom.enemyCooldownBar.style.width = `${cooldownPercent(enemy)}%`;
-  dom.playerStatus.textContent = getStatusLine(player);
-  dom.enemyStatus.textContent = getStatusLine(enemy);
-  dom.enemyStats.replaceChildren(...makeStats([
-    `${enemyBlueprint.bot.attackName}`,
-    `Damage ${enemy.shotDamage}`,
-    `Health ${enemy.maxHealth}`,
-    `Armour ${enemy.armorBonus.toFixed(1)}%`,
-    `Speed ${enemy.speedBonus.toFixed(1)}%`,
-    `${getDifficultyLabel(state.encounter)} enemy`,
-  ]));
-  dom.fireButton.disabled = player.cooldownRemaining > 0 || isDisabled(player) || player.health <= 0 || enemy.health <= 0;
-  dom.berserkButton.disabled =
+  setText(dom.enemyName, enemy.name);
+  setText(dom.playerHealthText, `${roundNumber(player.health)} / ${roundNumber(player.maxHealth)}`);
+  setText(dom.enemyHealthText, `${roundNumber(enemy.health)} / ${roundNumber(enemy.maxHealth)}`);
+  setWidth(dom.playerHealthBar, `${clamp((player.health / player.maxHealth) * 100, 0, 100)}%`);
+  setWidth(dom.enemyHealthBar, `${clamp((enemy.health / enemy.maxHealth) * 100, 0, 100)}%`);
+  setWidth(dom.playerCooldownBar, `${cooldownPercent(player)}%`);
+  setWidth(dom.enemyCooldownBar, `${cooldownPercent(enemy)}%`);
+  setText(dom.playerStatus, getStatusLine(player));
+  setText(dom.enemyStatus, getStatusLine(enemy));
+  if (dom.enemyStats) {
+    dom.enemyStats.replaceChildren(...makeStats([
+      `${enemyBlueprint.bot.attackName}`,
+      `Damage ${enemy.shotDamage}`,
+      `Health ${enemy.maxHealth}`,
+      `Armour ${enemy.armorBonus.toFixed(1)}%`,
+      `Speed ${enemy.speedBonus.toFixed(1)}%`,
+      `${getDifficultyLabel(state.encounter)} enemy`,
+    ]));
+  }
+  setDisabled(dom.fireButton, player.cooldownRemaining > 0 || isDisabled(player) || player.health <= 0 || enemy.health <= 0);
+  setDisabled(
+    dom.berserkButton,
     isDisabled(player) ||
     !state.berserks.some((key) => ["freeze", "striker", "golden"].includes(key) && !player.usedBerserks.includes(key)) ||
-    Boolean(player.berserkState);
-  dom.startBattle.disabled = true;
-  dom.battleLog.textContent = battle.logLines.join("\n");
-  dom.battleLog.scrollTop = dom.battleLog.scrollHeight;
+    Boolean(player.berserkState)
+  );
+  setDisabled(dom.startBattle, true);
+  setText(dom.battleLog, battle.logLines.join("\n"));
+  if (dom.battleLog) dom.battleLog.scrollTop = dom.battleLog.scrollHeight;
+  renderArena();
 }
 
 function makeStats(items) {
@@ -855,13 +888,259 @@ function resetSave() {
     window.clearInterval(battle.intervalId);
     battle = null;
   }
+  if (autoAdvanceTimeout) {
+    window.clearTimeout(autoAdvanceTimeout);
+    autoAdvanceTimeout = null;
+  }
   state = defaultState();
-  lastBattleReport = "Press Start Encounter to enter the arena.";
+  lastBattleReport = "";
   saveState();
   syncStaticUi();
   syncBattleUi();
   renderShops();
   renderInventory();
+  scheduleAutoAdvance();
+}
+
+function autoSpendMoney() {
+  let changed = false;
+  let purchased = true;
+
+  while (purchased) {
+    purchased = false;
+
+    const moduleOption = MODULES
+      .map((module) => {
+        const currentLevel = state.modules[module.key];
+        const nextLevel = Math.min(14, currentLevel + 1);
+        return {
+          key: module.key,
+          nextLevel,
+          cost: currentLevel >= 14 ? Number.POSITIVE_INFINITY : getModuleUpgradeCost(nextLevel),
+        };
+      })
+      .sort((left, right) => left.cost - right.cost)[0];
+
+    if (moduleOption && Number.isFinite(moduleOption.cost) && moduleOption.cost <= state.money) {
+      state.money -= moduleOption.cost;
+      state.modules[moduleOption.key] = moduleOption.nextLevel;
+      changed = true;
+      purchased = true;
+      continue;
+    }
+
+    const berserkOption = BERSERKS
+      .filter((item) => !state.berserks.includes(item.key) && highestOwnedTier() >= item.tier && item.cost <= state.money)
+      .sort((left, right) => left.cost - right.cost)[0];
+
+    if (berserkOption) {
+      state.money -= berserkOption.cost;
+      state.berserks = [...state.berserks, berserkOption.key];
+      changed = true;
+      purchased = true;
+    }
+  }
+
+  return changed;
+}
+
+function scheduleAutoAdvance() {
+  if (!dom.startBattle) return;
+  if (battle || autoAdvanceTimeout) return;
+  autoAdvanceTimeout = window.setTimeout(() => {
+    autoAdvanceTimeout = null;
+    startBattle();
+  }, 1100);
+}
+
+function getArenaContext() {
+  if (!dom.arenaCanvas) return null;
+  const context = dom.arenaCanvas.getContext("2d");
+  return context;
+}
+
+function renderArena() {
+  const context = getArenaContext();
+  if (!context || !dom.arenaCanvas) return;
+
+  const canvas = dom.arenaCanvas;
+  const width = canvas.width;
+  const height = canvas.height;
+  const now = performance.now() / 1000;
+
+  context.clearRect(0, 0, width, height);
+  context.fillStyle = "#000";
+  context.fillRect(0, 0, width, height);
+
+  if (!battle) {
+    const playerX = width * 0.23;
+    const enemyX = width * 0.7;
+    const playerY = height * 0.58;
+    const enemyY = height * 0.58;
+    drawHudText(context, 150, 10, distanceUnits(playerX, playerY, enemyX, enemyY));
+    drawPlayerBot(context, playerX, playerY, 150, 150, 10, now);
+    drawEnemyBot(context, enemyX, enemyY, 200, 200, now);
+    return;
+  }
+
+  const player = battle.player;
+  const enemy = battle.enemy;
+  const playerX = width * 0.23;
+  const enemyX = width * 0.7;
+  const playerY = height * 0.58 + Math.sin(now * 2.3) * 2;
+  const enemyY = height * 0.58 + Math.sin(now * 2.1 + 0.7) * 2;
+  const playerAmmo = Math.round(cooldownPercent(player) / 10);
+
+  drawHudText(context, player.health, playerAmmo, distanceUnits(playerX, playerY, enemyX, enemyY));
+  drawPlayerBot(context, playerX, playerY, player.health, player.maxHealth, playerAmmo, now, player);
+  drawEnemyBot(context, enemyX, enemyY, enemy.health, enemy.maxHealth, now, enemy);
+  drawShot(context, playerX + 16, playerY - 16, enemyX - 18, enemyY - 6, justFired(player), "#2f44ff");
+  drawShot(context, enemyX - 14, enemyY - 4, playerX + 12, playerY - 12, justFired(enemy), "#ff4338");
+}
+
+function drawHudText(context, hp, ammo, dist) {
+  context.save();
+  context.fillStyle = "#f5f5f5";
+  context.font = '700 28px "Share Tech Mono", monospace';
+  context.textBaseline = "top";
+  context.fillText(`HP: ${Math.max(0, Math.round(hp))} | AMMO: ${Math.max(0, ammo)} | DIST: ${dist.toFixed(1)}U`, 28, 24);
+  context.restore();
+}
+
+function drawPlayerBot(context, x, y, health, maxHealth, ammo, now, actor = null) {
+  context.save();
+  context.translate(x, y);
+
+  context.strokeStyle = "#0f25ff";
+  context.lineWidth = 6;
+  context.beginPath();
+  context.arc(0, 0, 40, 0, Math.PI * 2);
+  context.stroke();
+
+  context.fillStyle = "#3948ff";
+  context.beginPath();
+  context.arc(0, 0, 25, 0, Math.PI * 2);
+  context.fill();
+
+  context.strokeStyle = "rgba(15, 37, 255, 0.95)";
+  context.lineWidth = 4;
+  context.beginPath();
+  context.moveTo(0, 0);
+  context.lineTo(26, -26);
+  context.stroke();
+
+  if (actor?.berserkState) {
+    context.strokeStyle = "#ffd24d";
+    context.lineWidth = 3;
+    context.beginPath();
+    context.arc(0, 0, 50 + Math.sin(now * 16) * 2, 0, Math.PI * 2);
+    context.stroke();
+  }
+
+  if (actor && isDisabled(actor)) {
+    context.strokeStyle = "#8fd3ff";
+    context.setLineDash([6, 6]);
+    context.lineWidth = 2;
+    context.beginPath();
+    context.arc(0, 0, 56, 0, Math.PI * 2);
+    context.stroke();
+    context.setLineDash([]);
+  }
+
+  context.restore();
+  drawHealthBar(context, x - 30, y - 48, 60, health, maxHealth);
+
+  context.save();
+  context.fillStyle = "#ff2b2b";
+  context.font = '700 18px "Share Tech Mono", monospace';
+  context.fillText(`${Math.max(0, ammo)}`, x + 10, y - 24);
+  context.restore();
+}
+
+function drawEnemyBot(context, x, y, health, maxHealth, now, actor = null) {
+  context.save();
+  context.translate(x, y);
+
+  context.fillStyle = "#ff3a2f";
+  context.beginPath();
+  context.arc(0, 0, 24, 0, Math.PI * 2);
+  context.fill();
+
+  if (actor?.berserkState) {
+    context.strokeStyle = "#ffd24d";
+    context.lineWidth = 3;
+    context.beginPath();
+    context.arc(0, 0, 36 + Math.sin(now * 16) * 2, 0, Math.PI * 2);
+    context.stroke();
+  }
+
+  if (actor && isDisabled(actor)) {
+    context.strokeStyle = "#8fd3ff";
+    context.setLineDash([6, 6]);
+    context.lineWidth = 2;
+    context.beginPath();
+    context.arc(0, 0, 42, 0, Math.PI * 2);
+    context.stroke();
+    context.setLineDash([]);
+  }
+
+  context.restore();
+  drawHealthBar(context, x - 30, y - 48, 60, health, maxHealth);
+
+  context.save();
+  context.fillStyle = "#f5f5f5";
+  context.font = '700 18px "Share Tech Mono", monospace';
+  context.fillText(`${Math.max(0, Math.round(health))}`, x + 38, y - 40);
+  context.restore();
+}
+
+function drawHealthBar(context, x, y, width, health, maxHealth) {
+  context.save();
+  context.fillStyle = "#114400";
+  context.fillRect(x, y, width, 8);
+  context.fillStyle = "#00ff1a";
+  context.fillRect(x, y, width * clamp(health / Math.max(maxHealth, 1), 0, 1), 8);
+  context.restore();
+}
+
+function drawShot(context, fromX, fromY, toX, toY, active, color) {
+  if (!active) return;
+  context.save();
+  context.strokeStyle = color;
+  context.lineWidth = 2;
+  context.beginPath();
+  context.moveTo(fromX, fromY);
+  context.lineTo(toX, toY);
+  context.stroke();
+  context.restore();
+}
+
+function justFired(actor) {
+  if (!actor) return false;
+  const duration = Math.max(actor.cooldownDuration, 0.01);
+  return actor.cooldownRemaining >= duration - 0.14;
+}
+
+function distanceUnits(fromX, fromY, toX, toY) {
+  return Math.hypot(toX - fromX, toY - fromY) / 6.65;
+}
+
+function resizeArenaCanvas() {
+  if (!dom.arenaCanvas) return;
+  const ratio = window.devicePixelRatio || 1;
+  const bounds = dom.arenaCanvas.getBoundingClientRect();
+  const nextWidth = Math.max(1, Math.round(bounds.width * ratio));
+  const nextHeight = Math.max(1, Math.round(bounds.height * ratio));
+
+  if (dom.arenaCanvas.width !== nextWidth || dom.arenaCanvas.height !== nextHeight) {
+    dom.arenaCanvas.width = nextWidth;
+    dom.arenaCanvas.height = nextHeight;
+  }
+}
+
+function tickArenaFrame() {
+  renderArena();
+  arenaFrame = window.requestAnimationFrame(tickArenaFrame);
 }
 
 function clamp(value, min, max) {
@@ -872,12 +1151,36 @@ function roundNumber(value) {
   return Math.round(value * 10) / 10;
 }
 
-dom.startBattle.addEventListener("click", startBattle);
-dom.resetSave.addEventListener("click", resetSave);
-dom.fireButton.addEventListener("click", handlePlayerFire);
-dom.berserkButton.addEventListener("click", handlePlayerBerserk);
+if (dom.startBattle) dom.startBattle.addEventListener("click", startBattle);
+if (dom.resetSave) dom.resetSave.addEventListener("click", resetSave);
+if (dom.fireButton) dom.fireButton.addEventListener("click", handlePlayerFire);
+if (dom.berserkButton) dom.berserkButton.addEventListener("click", handlePlayerBerserk);
 
-syncStaticUi();
-syncBattleUi();
-renderShops();
-renderInventory();
+if (dom.arenaCanvas) {
+  resizeArenaCanvas();
+  if (!arenaFrame) {
+    arenaFrame = window.requestAnimationFrame(tickArenaFrame);
+  }
+
+  dom.arenaCanvas.addEventListener("pointerdown", handlePlayerFire);
+  window.addEventListener("resize", resizeArenaCanvas);
+  window.addEventListener("keydown", (event) => {
+    if (event.repeat) return;
+    if (event.code === "Space") {
+      event.preventDefault();
+      handlePlayerFire();
+    }
+    if (event.code === "ShiftLeft" || event.code === "ShiftRight") {
+      event.preventDefault();
+      handlePlayerBerserk();
+    }
+  });
+}
+
+if (dom.startBattle || dom.arenaCanvas) {
+  syncStaticUi();
+  syncBattleUi();
+  renderShops();
+  renderInventory();
+  scheduleAutoAdvance();
+}

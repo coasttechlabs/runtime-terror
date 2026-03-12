@@ -10,7 +10,7 @@ const PUBLIC_LINKS = [
 ];
 
 const PRIVATE_LINKS = [
-  { href: "./game-search.html", label: "Game" },
+  { href: "./game.html", label: "Game" },
   { href: "./profile-settings.html", label: "Profile" }
 ];
 const API_BASE = getApiBase();
