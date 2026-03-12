@@ -368,6 +368,94 @@
       transform: translateY(1px);
     }
 
+    /* Upgrade Menu Styles */
+    .upgrade-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+      gap: 18px;
+      margin-bottom: 24px;
+    }
+
+    .section-header {
+      margin: 24px 0 16px;
+      font-size: 1.15rem;
+      letter-spacing: 1px;
+      text-transform: uppercase;
+      color: var(--line);
+      text-shadow: 0 0 8px rgba(141, 255, 189, 0.35);
+      border-bottom: 1px solid var(--line-soft);
+      padding-bottom: 8px;
+    }
+
+    .upgrade-card {
+      background: rgba(255, 255, 255, 0.03);
+      border: 1px solid var(--line-soft);
+      border-radius: 4px;
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+      transition: transform 0.2s ease, box-shadow 0.2s ease, border-color 0.2s ease;
+    }
+
+    .upgrade-card:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 6px 16px rgba(0, 0, 0, 0.4);
+      border-color: var(--line);
+    }
+
+    .upgrade-card-header {
+      padding: 12px;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      background: rgba(0, 0, 0, 0.25);
+    }
+
+    .upgrade-icon {
+      width: 42px;
+      height: 42px;
+      object-fit: contain;
+      background: #000;
+      border: 1px solid #333;
+      padding: 4px;
+      border-radius: 4px;
+    }
+
+    .upgrade-card h3 {
+      margin: 0;
+      font-size: 1rem;
+      color: #e6e9ee;
+      letter-spacing: 0.5px;
+      font-family: "Share Tech Mono", monospace;
+    }
+
+    .upgrade-body {
+      padding: 14px;
+      flex: 1;
+    }
+
+    .upgrade-stat-row {
+      display: flex;
+      justify-content: space-between;
+      margin-bottom: 8px;
+      font-size: 0.9rem;
+    }
+
+    .upgrade-stat-label { color: var(--muted); }
+    .upgrade-stat-value { color: var(--line); font-weight: bold; }
+    .upgrade-stat-value.plus { color: #ffd166; }
+    
+    .upgrade-desc {
+      font-size: 0.85rem;
+      color: var(--muted);
+      line-height: 1.4;
+      margin-top: 10px;
+    }
+
+    .berserk-card { border-left: 3px solid #ff4d4d; }
+    .berserk-card .upgrade-stat-value { color: #ff4d4d; }
+
     @media (max-width: 760px) {
       .site-header {
         padding: 16px 14px;
@@ -533,10 +621,10 @@
       </section>
 
       <section class="tab-panel" id="panel-upgrades" aria-label="Bot upgrades tab">
-        <section class="placeholder-panel">
-          <h2>Battlebot Upgrades</h2>
-          <p>Upgrade your bot's firmware, armor, and weapon systems here.</p>
-        </section>
+        <h2 class="section-header">Core Modules</h2>
+        <div id="core-modules" class="upgrade-grid"></div>
+        <h2 class="section-header">Berserk Upgrades</h2>
+        <div id="berserk-modules" class="upgrade-grid"></div>
       </section>
     </section>
   </main>
@@ -818,11 +906,111 @@
       }, 10000);
     }
 
+    // --- Upgrade Menu Logic ---
+    const STAT_MODULES = [
+      { key: "damage", name: "Damage Module", base: 7.5, unit: "% Damage" },
+      { key: "health", name: "Health Module", base: 7.5, unit: "% Health" },
+      { key: "armor", name: "Armour Module", base: 7.5, unit: "% Damage Taken", inverse: true },
+      { key: "speed", name: "Speed Module", base: 10, unit: "% Speed" }
+    ];
+
+    const BERSERKS = [
+      {
+        key: "elemental",
+        tier: 2,
+        name: "Elemental Module Tier 2",
+        description: "-10% health.<br>+10% Elemental Damage.",
+      },
+      {
+        key: "freeze",
+        tier: 4,
+        name: "Freeze Module Tier 4",
+        description: "Freeze enemy for 5s (no move/shoot).<br>Self-inflicts 40 damage on use.",
+      },
+      {
+        key: "striker",
+        tier: 6,
+        name: "Striker Module Tier 6",
+        description: "3x Fire Rate for 5s.<br>+30% Damage Taken while active.",
+      },
+      {
+        key: "golden",
+        tier: 7,
+        name: "Golden Module Tier 7",
+        description: "90% Deflection Chance.<br>40% Reflect Chance (0.5x dmg).<br>-40% Movement Speed.<br>-30% Fire Rate.<br>Lasts 7 seconds.",
+      }
+    ];
+
+    function calculateStat(base, tier, isPlus) {
+      const doubled = base * Math.pow(2, tier - 1);
+      const extra = isPlus ? 2.5 : 0;
+      return doubled + extra;
+    }
+
+    function renderUpgrades() {
+      const coreContainer = document.getElementById('core-modules');
+      const berserkContainer = document.getElementById('berserk-modules');
+      
+      if (!coreContainer || !berserkContainer) return;
+      
+      coreContainer.innerHTML = "";
+      berserkContainer.innerHTML = "";
+
+      STAT_MODULES.forEach(mod => {
+        const valT1 = calculateStat(mod.base, 1, false);
+        const valT1Plus = calculateStat(mod.base, 1, true);
+        const sign = mod.inverse ? '-' : '+';
+        
+        const card = document.createElement('div');
+        card.className = 'upgrade-card';
+        card.innerHTML = `
+          <div class="upgrade-card-header">
+            <img src="compressed-images/${mod.key}.png" alt="${mod.name}" class="upgrade-icon" onerror="this.style.display='none'">
+            <h3>${mod.name}</h3>
+          </div>
+          <div class="upgrade-body">
+            <div class="upgrade-stat-row">
+              <span class="upgrade-stat-label">Tier 1</span>
+              <span class="upgrade-stat-value">${sign}${valT1}${mod.unit}</span>
+            </div>
+            <div class="upgrade-stat-row">
+              <span class="upgrade-stat-label">Tier 1+</span>
+              <span class="upgrade-stat-value plus">${sign}${valT1Plus}${mod.unit}</span>
+            </div>
+            <div class="upgrade-desc">Upgrades double stats per tier. (+) variants add 2.5%.</div>
+          </div>
+        `;
+        coreContainer.appendChild(card);
+      });
+
+      BERSERKS.forEach(mod => {
+        const card = document.createElement('div');
+        card.className = 'upgrade-card berserk-card';
+        card.innerHTML = `
+          <div class="upgrade-card-header">
+            <img src="compressed-images/${mod.key}.png" alt="${mod.name}" class="upgrade-icon" onerror="this.style.display='none'">
+            <h3>${mod.name}</h3>
+          </div>
+          <div class="upgrade-body">
+            <div class="upgrade-stat-row">
+              <span class="upgrade-stat-label" style="color:#ff6a57">Requirement</span>
+              <span class="upgrade-stat-value">Tier ${mod.tier}</span>
+            </div>
+            <div class="upgrade-desc">${mod.description}</div>
+          </div>
+        `;
+        berserkContainer.appendChild(card);
+      });
+    }
+
     sideButtons.forEach((btn) => {
       btn.addEventListener("click", () => {
         setActiveTab(btn.dataset.tab || "profile");
       });
     });
+    
+    // Initial render call
+    renderUpgrades();
 
     async function respondToRequest(requestId, status) {
       if (!requestId || !currentUser) return;

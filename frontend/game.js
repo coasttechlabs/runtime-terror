@@ -134,6 +134,51 @@ const dom = {
   upgradeShop: document.querySelector("#upgrade-shop"),
   berserkShop: document.querySelector("#berserk-shop"),
   uniqueInventory: document.querySelector("#unique-inventory"),
+  textOverlay: null,
+};
+
+// WebGL Globals
+let gl = null;
+let glProgram = null;
+let glTextCtx = null;
+let glBuffer = null;
+
+const VS_SRC = `
+attribute vec2 a_pos;
+uniform vec2 u_res;
+uniform vec2 u_trans;
+uniform vec2 u_scale;
+uniform float u_rot;
+varying vec2 v_uv;
+void main() {
+    v_uv = a_pos; 
+    vec2 p = a_pos * u_scale;
+    float c = cos(u_rot);
+    float s = sin(u_rot);
+    p = vec2(p.x * c - p.y * s, p.x * s + p.y * c);
+    p += u_trans;
+    vec2 clip = (p / u_res) * 2.0 - 1.0;
+    clip.y *= -1.0;
+    gl_Position = vec4(clip, 0, 1);
+}`;
+
+const FS_SRC = `
+precision mediump float;
+uniform vec4 u_color;
+uniform int u_type; // 0=rect, 1=circle, 2=ring
+uniform float u_param;
+varying vec2 v_uv;
+void main() {
+    if (u_type == 0) {
+        gl_FragColor = u_color;
+    } else {
+        float d = length(v_uv);
+        float alpha = 0.0;
+        float delta = 0.05; // Smoothing factor
+        if (u_type == 1) alpha = 1.0 - smoothstep(1.0 - delta, 1.0, d);
+        else if (u_type == 2) alpha = smoothstep(1.0 - u_param - delta, 1.0 - u_param, d) * (1.0 - smoothstep(1.0 - delta, 1.0, d));
+        gl_FragColor = vec4(u_color.rgb, u_color.a * alpha);
+    }
 };
 
 let state = loadState();
@@ -953,33 +998,107 @@ function scheduleAutoAdvance() {
   }, 1100);
 }
 
-function getArenaContext() {
-  if (!dom.arenaCanvas) return null;
-  const context = dom.arenaCanvas.getContext("2d");
-  return context;
+function initWebGL() {
+  const canvas = dom.arenaCanvas;
+  if (!canvas) return false;
+
+  // Setup Text Overlay
+  if (!dom.textOverlay) {
+    dom.textOverlay = document.createElement("canvas");
+    dom.textOverlay.style.position = "absolute";
+    dom.textOverlay.style.top = "0";
+    dom.textOverlay.style.left = "0";
+    dom.textOverlay.style.pointerEvents = "none";
+    canvas.parentNode.style.position = "relative";
+    canvas.parentNode.insertBefore(dom.textOverlay, canvas.nextSibling);
+    glTextCtx = dom.textOverlay.getContext("2d");
+  }
+
+  // Setup WebGL
+  gl = canvas.getContext("webgl", { alpha: false, antialias: true });
+  if (!gl) return false;
+
+  // Shader Compilation
+  const vs = gl.createShader(gl.VERTEX_SHADER);
+  gl.shaderSource(vs, VS_SRC);
+  gl.compileShader(vs);
+  
+  const fs = gl.createShader(gl.FRAGMENT_SHADER);
+  gl.shaderSource(fs, FS_SRC);
+  gl.compileShader(fs);
+
+  glProgram = gl.createProgram();
+  gl.attachShader(glProgram, vs);
+  gl.attachShader(glProgram, fs);
+  gl.linkProgram(glProgram);
+  gl.useProgram(glProgram);
+
+  // Quad Buffer
+  glBuffer = gl.createBuffer();
+  gl.bindBuffer(gl.ARRAY_BUFFER, glBuffer);
+  gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1, -1, 1, -1, -1, 1, 1, 1]), gl.STATIC_DRAW);
+  
+  const aPos = gl.getAttribLocation(glProgram, "a_pos");
+  gl.enableVertexAttribArray(aPos);
+  gl.vertexAttribPointer(aPos, 2, gl.FLOAT, false, 0, 0);
+
+  // Transparency
+  gl.enable(gl.BLEND);
+  gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
+  
+  return true;
+}
+
+function hexToRgba(hex, alpha = 1.0) {
+  let c = hex.substring(1).split('');
+  if(c.length === 3) c = [c[0], c[0], c[1], c[1], c[2], c[2]];
+  c = '0x' + c.join('');
+  return [(c>>16)&255, (c>>8)&255, c&255, alpha * 255];
+}
+
+function glSetColor(hex, alpha = 1.0) {
+  const [r, g, b, a] = hexToRgba(hex, alpha);
+  gl.uniform4f(gl.getUniformLocation(glProgram, "u_color"), r/255, g/255, b/255, a/255);
+}
+
+function glDrawShape(type, x, y, scaleX, scaleY, rotation, param = 0) {
+  gl.uniform2f(gl.getUniformLocation(glProgram, "u_trans"), x, y);
+  gl.uniform2f(gl.getUniformLocation(glProgram, "u_scale"), scaleX, scaleY);
+  gl.uniform1f(gl.getUniformLocation(glProgram, "u_rot"), rotation);
+  gl.uniform1i(gl.getUniformLocation(glProgram, "u_type"), type);
+  gl.uniform1f(gl.getUniformLocation(glProgram, "u_param"), param);
+  gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
 }
 
 function renderArena() {
-  const context = getArenaContext();
-  if (!context || !dom.arenaCanvas) return;
+  if (!gl) { if (!initWebGL()) return; }
+  if (!glTextCtx) return;
 
   const canvas = dom.arenaCanvas;
   const width = canvas.width;
   const height = canvas.height;
   const now = performance.now() / 1000;
 
-  context.clearRect(0, 0, width, height);
-  context.fillStyle = "#000";
-  context.fillRect(0, 0, width, height);
+  // Update Resolution
+  gl.viewport(0, 0, width, height);
+  gl.uniform2f(gl.getUniformLocation(glProgram, "u_res"), width, height);
+
+  // Clear WebGL
+  gl.clearColor(0, 0, 0, 1);
+  gl.clear(gl.COLOR_BUFFER_BIT);
+
+  // Clear Text Overlay
+  glTextCtx.clearRect(0, 0, width, height);
 
   if (!battle) {
     const playerX = width * 0.23;
     const enemyX = width * 0.7;
     const playerY = height * 0.58;
     const enemyY = height * 0.58;
-    drawHudText(context, 150, 10, distanceUnits(playerX, playerY, enemyX, enemyY));
-    drawPlayerBot(context, playerX, playerY, 150, 150, 10, now);
-    drawEnemyBot(context, enemyX, enemyY, 200, 200, now);
+    
+    drawHudText(glTextCtx, 150, 10, distanceUnits(playerX, playerY, enemyX, enemyY));
+    drawPlayerBotGL(playerX, playerY, 150, 150, 10, now);
+    drawEnemyBotGL(enemyX, enemyY, 200, 200, now);
     return;
   }
 
@@ -991,128 +1110,113 @@ function renderArena() {
   const enemyY = height * 0.58 + Math.sin(now * 2.1 + 0.7) * 2;
   const playerAmmo = Math.round(cooldownPercent(player) / 10);
 
-  drawHudText(context, player.health, playerAmmo, distanceUnits(playerX, playerY, enemyX, enemyY));
-  drawPlayerBot(context, playerX, playerY, player.health, player.maxHealth, playerAmmo, now, player);
-  drawEnemyBot(context, enemyX, enemyY, enemy.health, enemy.maxHealth, now, enemy);
-  drawShot(context, playerX + 16, playerY - 16, enemyX - 18, enemyY - 6, justFired(player), "#2f44ff");
-  drawShot(context, enemyX - 14, enemyY - 4, playerX + 12, playerY - 12, justFired(enemy), "#ff4338");
+  drawHudText(glTextCtx, player.health, playerAmmo, distanceUnits(playerX, playerY, enemyX, enemyY));
+  drawPlayerBotGL(playerX, playerY, player.health, player.maxHealth, playerAmmo, now, player);
+  drawEnemyBotGL(enemyX, enemyY, enemy.health, enemy.maxHealth, now, enemy);
+  
+  drawShotGL(playerX + 16, playerY - 16, enemyX - 18, enemyY - 6, justFired(player), "#2f44ff");
+  drawShotGL(enemyX - 14, enemyY - 4, playerX + 12, playerY - 12, justFired(enemy), "#ff4338");
 }
 
 function drawHudText(context, hp, ammo, dist) {
+  if (!context) return;
   context.save();
   context.fillStyle = "#f5f5f5";
   context.font = '700 28px "Share Tech Mono", monospace';
   context.textBaseline = "top";
-  context.fillText(`HP: ${Math.max(0, Math.round(hp))} | AMMO: ${Math.max(0, ammo)} | DIST: ${dist.toFixed(1)}U`, 28, 24);
+  context.fillText(`HP: ${Math.max(0, Math.round(hp))} | AMMO: ${Math.max(0, ammo)} | DIST: ${dist.toFixed(1)}U`, 28, 20);
   context.restore();
 }
 
-function drawPlayerBot(context, x, y, health, maxHealth, ammo, now, actor = null) {
-  context.save();
-  context.translate(x, y);
+function drawPlayerBotGL(x, y, health, maxHealth, ammo, now, actor = null) {
+  // 1. Ring
+  glSetColor("#0f25ff");
+  glDrawShape(2, x, y, 40, 40, 0, 0.15); // x, y, radius, radius, rot, thickness
 
-  context.strokeStyle = "#0f25ff";
-  context.lineWidth = 6;
-  context.beginPath();
-  context.arc(0, 0, 40, 0, Math.PI * 2);
-  context.stroke();
+  // 2. Body
+  glSetColor("#3948ff");
+  glDrawShape(1, x, y, 25, 25, 0);
 
-  context.fillStyle = "#3948ff";
-  context.beginPath();
-  context.arc(0, 0, 25, 0, Math.PI * 2);
-  context.fill();
-
-  context.strokeStyle = "rgba(15, 37, 255, 0.95)";
-  context.lineWidth = 4;
-  context.beginPath();
-  context.moveTo(0, 0);
-  context.lineTo(26, -26);
-  context.stroke();
+  // 3. Cannon (Line -> Rotated Rect)
+  glSetColor("#0f25ff", 0.95);
+  const cannonLen = 35; 
+  // Position offset to start from center and point top-right (-45 deg)
+  const angle = -Math.PI / 4;
+  const cx = x + Math.cos(angle) * (cannonLen / 2);
+  const cy = y + Math.sin(angle) * (cannonLen / 2);
+  glDrawShape(0, cx, cy, cannonLen/2, 2, angle);
 
   if (actor?.berserkState) {
-    context.strokeStyle = "#ffd24d";
-    context.lineWidth = 3;
-    context.beginPath();
-    context.arc(0, 0, 50 + Math.sin(now * 16) * 2, 0, Math.PI * 2);
-    context.stroke();
+    glSetColor("#ffd24d");
+    const r = 50 + Math.sin(now * 16) * 2;
+    glDrawShape(2, x, y, r, r, 0, 0.05);
   }
 
   if (actor && isDisabled(actor)) {
-    context.strokeStyle = "#8fd3ff";
-    context.setLineDash([6, 6]);
-    context.lineWidth = 2;
-    context.beginPath();
-    context.arc(0, 0, 56, 0, Math.PI * 2);
-    context.stroke();
-    context.setLineDash([]);
+    glSetColor("#8fd3ff");
+    glDrawShape(2, x, y, 56, 56, 0, 0.03); // Solid for now in GL
   }
 
-  context.restore();
-  drawHealthBar(context, x - 30, y - 48, 60, health, maxHealth);
-
-  context.save();
-  context.fillStyle = "#ff2b2b";
-  context.font = '700 18px "Share Tech Mono", monospace';
-  context.fillText(`${Math.max(0, ammo)}`, x + 10, y - 24);
-  context.restore();
+  drawHealthBarGL(x - 30, y - 48, 60, health, maxHealth);
+  
+  // Ammo Text (Overlay)
+  glTextCtx.save();
+  glTextCtx.fillStyle = "#ff2b2b";
+  glTextCtx.font = '700 18px "Share Tech Mono", monospace';
+  glTextCtx.fillText(`${Math.max(0, ammo)}`, x + 10, y - 24);
+  glTextCtx.restore();
 }
 
-function drawEnemyBot(context, x, y, health, maxHealth, now, actor = null) {
-  context.save();
-  context.translate(x, y);
-
-  context.fillStyle = "#ff3a2f";
-  context.beginPath();
-  context.arc(0, 0, 24, 0, Math.PI * 2);
-  context.fill();
+function drawEnemyBotGL(x, y, health, maxHealth, now, actor = null) {
+  // Body
+  glSetColor("#ff3a2f");
+  glDrawShape(1, x, y, 24, 24, 0);
 
   if (actor?.berserkState) {
-    context.strokeStyle = "#ffd24d";
-    context.lineWidth = 3;
-    context.beginPath();
-    context.arc(0, 0, 36 + Math.sin(now * 16) * 2, 0, Math.PI * 2);
-    context.stroke();
+    glSetColor("#ffd24d");
+    const r = 36 + Math.sin(now * 16) * 2;
+    glDrawShape(2, x, y, r, r, 0, 0.08);
   }
 
   if (actor && isDisabled(actor)) {
-    context.strokeStyle = "#8fd3ff";
-    context.setLineDash([6, 6]);
-    context.lineWidth = 2;
-    context.beginPath();
-    context.arc(0, 0, 42, 0, Math.PI * 2);
-    context.stroke();
-    context.setLineDash([]);
+    glSetColor("#8fd3ff");
+    glDrawShape(2, x, y, 42, 42, 0, 0.04);
   }
 
-  context.restore();
-  drawHealthBar(context, x - 30, y - 48, 60, health, maxHealth);
+  drawHealthBarGL(x - 30, y - 48, 60, health, maxHealth);
 
-  context.save();
-  context.fillStyle = "#f5f5f5";
-  context.font = '700 18px "Share Tech Mono", monospace';
-  context.fillText(`${Math.max(0, Math.round(health))}`, x + 38, y - 40);
-  context.restore();
+  // HP Text (Overlay)
+  glTextCtx.save();
+  glTextCtx.fillStyle = "#f5f5f5";
+  glTextCtx.font = '700 18px "Share Tech Mono", monospace';
+  glTextCtx.fillText(`${Math.max(0, Math.round(health))}`, x + 38, y - 40);
+  glTextCtx.restore();
 }
 
-function drawHealthBar(context, x, y, width, health, maxHealth) {
-  context.save();
-  context.fillStyle = "#114400";
-  context.fillRect(x, y, width, 8);
-  context.fillStyle = "#00ff1a";
-  context.fillRect(x, y, width * clamp(health / Math.max(maxHealth, 1), 0, 1), 8);
-  context.restore();
+function drawHealthBarGL(x, y, width, health, maxHealth) {
+  const h = 8;
+  // Background
+  glSetColor("#114400");
+  // GL rect is drawn from center, so offset x/y by half width/height
+  glDrawShape(0, x + width/2, y + h/2, width/2, h/2, 0);
+  
+  // Foreground
+  const fillPct = clamp(health / Math.max(maxHealth, 1), 0, 1);
+  const fillW = width * fillPct;
+  glSetColor("#00ff1a");
+  glDrawShape(0, x + fillW/2, y + h/2, fillW/2, h/2, 0);
 }
 
-function drawShot(context, fromX, fromY, toX, toY, active, color) {
+function drawShotGL(fromX, fromY, toX, toY, active, color) {
   if (!active) return;
-  context.save();
-  context.strokeStyle = color;
-  context.lineWidth = 2;
-  context.beginPath();
-  context.moveTo(fromX, fromY);
-  context.lineTo(toX, toY);
-  context.stroke();
-  context.restore();
+  glSetColor(color);
+  
+  const cx = (fromX + toX) / 2;
+  const cy = (fromY + toY) / 2;
+  const len = Math.hypot(toX - fromX, toY - fromY);
+  const angle = Math.atan2(toY - fromY, toX - fromX);
+  
+  glDrawShape(0, cx, cy, len/2, 1, angle); // 2px thick line (scaleY=1)
 }
 
 function justFired(actor) {
@@ -1132,9 +1236,13 @@ function resizeArenaCanvas() {
   const nextWidth = Math.max(1, Math.round(bounds.width * ratio));
   const nextHeight = Math.max(1, Math.round(bounds.height * ratio));
 
-  if (dom.arenaCanvas.width !== nextWidth || dom.arenaCanvas.height !== nextHeight) {
-    dom.arenaCanvas.width = nextWidth;
-    dom.arenaCanvas.height = nextHeight;
+  if (dom.arenaCanvas && (dom.arenaCanvas.width !== nextWidth || dom.arenaCanvas.height !== nextHeight)) {
+      dom.arenaCanvas.width = nextWidth;
+      dom.arenaCanvas.height = nextHeight;
+  }
+  if (dom.textOverlay && (dom.textOverlay.width !== nextWidth || dom.textOverlay.height !== nextHeight)) {
+      dom.textOverlay.width = nextWidth;
+      dom.textOverlay.height = nextHeight;
   }
 }
 
