@@ -1,4 +1,4 @@
-const STORAGE_KEY = "runtime-terror-solo-save-v1";
+const STORAGE_KEY = "runtime-terror-solo-save-v2";
 const TICK_MS = 16;
 const BASE_HEALTH = 150;
 const BASE_MOVE_SPEED = 180;
@@ -176,6 +176,7 @@ const dom = {
   arenaCanvas: document.querySelector("#arena-canvas"),
   botSelectionScreen: document.querySelector("#bot-selection-screen"),
   botSelectionContainer: document.querySelector("#bot-selection-container"),
+  gameOverScreen: document.querySelector("#game-over-screen"),
   arenaScreen: document.querySelector("#arena-screen"),
   encounterValue: document.querySelector("#encounter-value"),
   moneyValue: document.querySelector("#money-value"),
@@ -183,6 +184,10 @@ const dom = {
   difficultyValue: document.querySelector("#difficulty-value"),
   startBattle: document.querySelector("#start-battle"),
   resetSave: document.querySelector("#reset-save"),
+  playAgainButton: document.querySelector("#play-again-button"),
+  profileButton: document.querySelector("#profile-button"),
+  gameOverTitle: document.querySelector("#game-over-title"),
+  gameOverMessage: document.querySelector("#game-over-message"),
   fireButton: document.querySelector("#fire-button"),
   abilityButton: document.querySelector("#ability-button"),
   battleLog: document.querySelector("#battle-log"),
@@ -212,6 +217,8 @@ const inputState = {
   down: false,
   left: false,
   right: false,
+  mouseX: 0,
+  mouseY: 0,
 };
 
 function setText(node, value) {
@@ -467,6 +474,7 @@ function startBattle() {
   applyPassiveBerserks(enemy);
   syncStaticUi();
   syncBattleUi();
+  if (dom.gameOverScreen) dom.gameOverScreen.classList.add("hidden");
 }
 
 function endBattle(result) {
@@ -501,7 +509,18 @@ function endBattle(result) {
   syncBattleUi();
   renderShops();
   renderInventory();
-  scheduleAutoAdvance();
+  
+  // Show Game Over Screen
+  if (dom.gameOverScreen) {
+    dom.gameOverScreen.classList.remove("hidden");
+    if (result === "win") {
+      setText(dom.gameOverTitle, "VICTORY");
+      setText(dom.gameOverMessage, `You defeated ${enemy.name}! Reward: $${Math.floor(reward)}`);
+    } else {
+      setText(dom.gameOverTitle, "DEFEAT");
+      setText(dom.gameOverMessage, `You were destroyed by ${enemy.name}. Salvage: $${Math.floor(reward)}`);
+    }
+  }
 }
 
 function calculateLossReward(baseReward, damagePercent) {
@@ -621,10 +640,15 @@ function stepMovement(player, enemy, delta) {
     let dx = 0;
     let dy = 0;
 
-    if (distance > 360) {
+    // Modified AI logic: Sawblade rushes, others keep distance
+    const isSawblade = enemy.key === "sawblade";
+    const minRange = isSawblade ? 0 : 250;
+    const maxRange = isSawblade ? 20 : 360;
+
+    if (distance > maxRange) {
       dx = offsetX;
       dy = offsetY;
-    } else if (distance < 250) {
+    } else if (distance < minRange) {
       dx = -offsetX;
       dy = -offsetY;
     } else {
@@ -780,7 +804,31 @@ function handlePlayerFire() {
   const { player, enemy } = battle;
   if (player.cooldownRemaining > 0 || isDisabled(player)) return;
 
-  player.attackImpl(player, enemy);
+  // Manual Aim Logic
+  const rect = dom.arenaCanvas.getBoundingClientRect();
+  const scaleX = dom.arenaCanvas.width / rect.width;
+  const scaleY = dom.arenaCanvas.height / rect.height;
+  
+  const mouseCanvasX = (inputState.mouseX - rect.left) * scaleX;
+  const mouseCanvasY = (inputState.mouseY - rect.top) * scaleY;
+
+  const angle = Math.atan2(mouseCanvasY - player.y, mouseCanvasX - player.x);
+  
+  // Raycast Hit Check
+  const angleToEnemy = Math.atan2(enemy.y - player.y, enemy.x - player.x);
+  const distToEnemy = Math.hypot(enemy.x - player.x, enemy.y - player.y);
+  // Hitbox cone based on distance (closer = wider angular tolerance)
+  const threshold = Math.atan2(40, distToEnemy); 
+  const diff = Math.abs(angle - angleToEnemy);
+  const normalizedDiff = Math.abs(((diff + Math.PI) % (2 * Math.PI)) - Math.PI);
+
+  if (normalizedDiff < threshold) {
+      player.attackImpl(player, enemy);
+  }
+
+  // Visuals: Save target for drawShot
+  player.aimTarget = { x: player.x + Math.cos(angle) * 1280, y: player.y + Math.sin(angle) * 1280 };
+
   player.cooldownRemaining = getEffectiveCooldown(player);
   if (enemy.health <= 0) {
     endBattle("win");
@@ -1006,6 +1054,9 @@ function resetSave() {
     window.clearInterval(battle.intervalId);
     battle = null;
   }
+  if (dom.gameOverScreen) {
+      dom.gameOverScreen.classList.add("hidden");
+  }
   if (autoAdvanceTimeout) {
     window.clearTimeout(autoAdvanceTimeout);
     autoAdvanceTimeout = null;
@@ -1067,10 +1118,7 @@ function autoSpendMoney() {
 function scheduleAutoAdvance() {
   if (!dom.startBattle) return;
   if (battle || autoAdvanceTimeout) return;
-  autoAdvanceTimeout = window.setTimeout(() => {
-    autoAdvanceTimeout = null;
-    startBattle();
-  }, 1100);
+  // Disabled auto-advance to allow Win Screen interaction
 }
 
 function getArenaContext() {
@@ -1113,7 +1161,14 @@ function renderArena() {
   drawHudText(context, player.health, distanceUnits(playerX, playerY, enemyX, enemyY));
   drawBot(context, playerX, playerY, player.health, player.maxHealth, "#0000FF", now, player);
   drawBot(context, enemyX, enemyY, enemy.health, enemy.maxHealth, "#FF0000", now, enemy);
-  drawShot(context, playerX + 16 * player.facing, playerY - 16, enemyX - 18 * enemy.facing, enemyY - 6, justFired(player) && player.key !== "sawblade", "#2f44ff");
+  
+  // Player Shot Visual (Manual Aim)
+  if (justFired(player) && player.key !== "sawblade") {
+    const tx = player.aimTarget ? player.aimTarget.x * (width / 1280) : (enemyX - 18 * enemy.facing);
+    const ty = player.aimTarget ? player.aimTarget.y * (height / 720) : (enemyY - 6);
+    drawShot(context, playerX + 16 * player.facing, playerY - 16, tx, ty, true, "#2f44ff");
+  }
+  
   drawShot(context, enemyX + 14 * enemy.facing, enemyY - 4, playerX + 12 * player.facing, playerY - 12, justFired(enemy) && enemy.key !== "sawblade", "#ff4338");
 }
 
@@ -1270,7 +1325,7 @@ function selectPlayerBot(botKey) {
   saveState();
   showScreen("arena");
   resizeArenaCanvas();
-  initializeArena();
+  startBattle();
 }
 
 function initializeArena() {
@@ -1293,6 +1348,13 @@ if (dom.startBattle) dom.startBattle.addEventListener("click", startBattle);
 if (dom.resetSave) dom.resetSave.addEventListener("click", resetSave);
 if (dom.fireButton) dom.fireButton.addEventListener("click", handlePlayerFire);
 if (dom.abilityButton) dom.abilityButton.addEventListener("click", handlePlayerAbility);
+if (dom.playAgainButton) dom.playAgainButton.addEventListener("click", () => {
+    dom.gameOverScreen.classList.add("hidden");
+    startBattle();
+});
+if (dom.profileButton) dom.profileButton.addEventListener("click", () => {
+    window.location.href = "profile-settings.html";
+});
 
 function tickArenaFrame() {
   renderArena();
@@ -1304,6 +1366,10 @@ if (dom.arenaCanvas) {
   if (!arenaFrame) {
     arenaFrame = window.requestAnimationFrame(tickArenaFrame);
   }
+  dom.arenaCanvas.addEventListener("mousemove", (e) => {
+      inputState.mouseX = e.clientX;
+      inputState.mouseY = e.clientY;
+  });
   dom.arenaCanvas.addEventListener("pointerdown", handlePlayerFire);
   window.addEventListener("resize", resizeArenaCanvas);
   window.addEventListener("keydown", (event) => {
