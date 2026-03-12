@@ -21,22 +21,22 @@ const BERSERKS = [
   {
     key: "freeze",
     tier: 4,
-    name: "Freeze Module Tier 4",
-    description: "Your attacks have a chance to slow the enemy.",
+    name: "Freeze Module Tier 4 (Active)",
+    description: "Ability freezes enemy for 5s. Self-inflicts 40 dmg on use.",
     cost: 420,
   },
   {
     key: "striker",
     tier: 6,
-    name: "Striker Module Tier 6",
-    description: "+20% fire rate and speed, but -10% armor.",
+    name: "Striker Module Tier 6 (Active)",
+    description: "Ability: 3x Fire Rate, +30% Dmg taken for 5s.",
     cost: 760,
   },
   {
     key: "golden",
     tier: 7,
-    name: "Golden Module Tier 7",
-    description: "10% chance to deflect incoming shots.",
+    name: "Golden Module Tier 7 (Active)",
+    description: "Ability: 90% Deflect, 40% Reflect. Self Slow 40%, Fire Rate -30% for 7s.",
     cost: 980,
   },
 ];
@@ -309,9 +309,13 @@ function formatModuleTier(level) {
 }
 
 function getModuleUpgradeCost(nextLevel) {
-  const tier = getTierFromLevel(nextLevel);
-  const plus = isPlusLevel(nextLevel);
-  return 55 + tier * 45 + (plus ? 25 : 0);
+  if (nextLevel <= 1) return 650;
+  let cost = 650;
+  for (let l = 2; l <= nextLevel; l++) {
+    if (isPlusLevel(l)) cost *= 1.5;
+    else cost *= 2.5;
+  }
+  return Math.floor(cost);
 }
 
 function getPlayerProfile() {
@@ -400,6 +404,8 @@ function createActor(kind, config) {
     armorBreak: 0,
     plasmaDebuffFor: 0,
     acidHits: 0,
+    strikerModeFor: 0,
+    goldenModeFor: 0,
     berserks: config.berserks || [],
     usedBerserks: [],
     berserkState: null,
@@ -605,6 +611,8 @@ function stepActorTimers(actor, opponent, delta) {
   actor.freezeFor = Math.max(0, actor.freezeFor - delta);
   actor.disableFor = Math.max(0, actor.disableFor - delta);
   actor.plasmaDebuffFor = Math.max(0, actor.plasmaDebuffFor - delta);
+  actor.strikerModeFor = Math.max(0, actor.strikerModeFor - delta);
+  actor.goldenModeFor = Math.max(0, actor.goldenModeFor - delta);
 
   if (actor.berserkState) {
     actor.berserkState.remaining -= delta;
@@ -672,6 +680,8 @@ function stepMovement(player, enemy, delta) {
 function moveActor(actor, dx, dy, delta, multiplier = 1) {
   const length = Math.hypot(dx, dy);
   if (length === 0) return;
+  
+  if (actor.goldenModeFor > 0) multiplier *= 0.6; // 40% slower
 
   const normalizedX = dx / length;
   const normalizedY = dy / length;
@@ -687,6 +697,8 @@ function isDisabled(actor) {
 
 function getEffectiveCooldown(actor) {
   let multiplier = actor.plasmaDebuffFor > 0 ? 1.1 : 1;
+  if (actor.strikerModeFor > 0) multiplier /= 3; // 3x Fire Rate = 1/3 cooldown
+  if (actor.goldenModeFor > 0) multiplier *= 1.3; // 30% slower
   if (actor.key === "sawblade" && actor.unique6) multiplier /= 2.5;
   return actor.cooldownDuration * multiplier;
 }
@@ -695,20 +707,27 @@ function applyDamage(target, amount, source, attackerName, options = {}) {
   if (target.health <= 0) return 0;
   const incoming = Math.max(0, amount);
 
-  if (target.berserks.includes("golden") && options.projectile !== false && Math.random() <= 0.1) {
-    pushLog(`${target.name} deflected ${source}.`);
-    if (Math.random() <= 0.4 && battle) {
-      const reflectTarget = target.kind === "player" ? battle.enemy : battle.player;
-      const reflected = roundNumber(incoming / 2);
-      reflectTarget.health = Math.max(0, reflectTarget.health - reflected);
-      pushLog(`${target.name} reflected ${reflected} damage back to ${reflectTarget.name}.`);
+  // Golden Module Logic (Active)
+  if (target.goldenModeFor > 0 && options.projectile !== false) {
+    if (Math.random() <= 0.9) {
+      pushLog(`${target.name} deflected ${source} (Golden).`);
+      if (Math.random() <= 0.4 && battle) {
+        const reflectTarget = target.kind === "player" ? battle.enemy : battle.player;
+        const reflected = roundNumber(incoming / 2);
+        reflectTarget.health = Math.max(0, reflectTarget.health - reflected);
+        pushLog(`${target.name} reflected ${reflected} damage back to ${reflectTarget.name}.`);
+      }
+      return 0;
     }
-    return 0;
   }
 
   const armorMultiplier = Math.max(0.1, 1 - target.armorBonus / 100);
   const breakMultiplier = 1 + target.armorBreak / 100;
-  const finalDamage = roundNumber(incoming * armorMultiplier * breakMultiplier);
+  
+  // Striker Vulnerability
+  const strikerMult = target.strikerModeFor > 0 ? 1.3 : 1;
+
+  const finalDamage = roundNumber(incoming * armorMultiplier * breakMultiplier * strikerMult);
   target.health = Math.max(0, target.health - finalDamage);
   pushLog(`${attackerName} used ${source} for ${finalDamage} damage.`);
   return finalDamage;
@@ -798,13 +817,6 @@ function claymoreAbility(attacker, defender) {
 }
 
 function applyPassiveBerserks(actor) {
-  if (actor.berserks.includes("striker")) {
-    // Striker: +20% fire rate (reduce cooldown), +20% speed, -10% armor
-    actor.cooldownDuration *= 0.8;
-    actor.moveSpeed *= 1.2;
-    actor.armorBonus -= 10;
-    pushLog(`${actor.name} Striker Module active: Speed up, Armor down.`);
-  }
   return true;
 }
 
@@ -847,11 +859,35 @@ function handlePlayerFire() {
 function handlePlayerAbility() {
   if (!battle) return;
   const { player, enemy } = battle;
-  if (!player.abilityImpl || player.abilityCooldownRemaining > 0 || isDisabled(player)) return;
+  if (player.abilityCooldownRemaining > 0 || isDisabled(player)) return;
   
-  player.abilityImpl(player, enemy);
-  player.abilityCooldownRemaining = player.abilityCooldownDuration;
-  pushLog(`${player.name} used ability.`);
+  // Check if we have an ability OR Berserk triggers
+  const hasBerserkAbility = player.berserks.some(k => ["freeze", "striker", "golden"].includes(k));
+  if (!player.abilityImpl && !hasBerserkAbility) return;
+  
+  if (player.abilityImpl) {
+    player.abilityImpl(player, enemy);
+    pushLog(`${player.name} used ability.`);
+  }
+
+  // Berserk Active Triggers
+  if (player.berserks.includes("freeze")) {
+    enemy.freezeFor = Math.max(enemy.freezeFor, 5);
+    applyDamage(player, 40, "Freeze Module Self-Damage", player.name, { projectile: false });
+    pushLog("Freeze Module active: Enemy frozen 5s, 40 self-damage taken.");
+  }
+
+  if (player.berserks.includes("striker")) {
+    player.strikerModeFor = 5;
+    pushLog("Striker Module active: 3x Fire Rate, +30% Incoming Dmg for 5s.");
+  }
+
+  if (player.berserks.includes("golden")) {
+    player.goldenModeFor = 7;
+    pushLog("Golden Module active: Deflection/Reflection up, Speed/FireRate down for 7s.");
+  }
+
+  player.abilityCooldownRemaining = Math.max(player.abilityCooldownDuration, hasBerserkAbility && player.abilityCooldownDuration === 0 ? 12 : 0);
   syncBattleUi();
 }
 
@@ -1014,7 +1050,7 @@ function syncBattleUi() {
   setDisabled(
     dom.abilityButton,
     isDisabled(player) ||
-    !player.abilityImpl || 
+    (!player.abilityImpl && !player.berserks.some(k => ["freeze", "striker", "golden"].includes(k))) || 
     player.abilityCooldownRemaining > 0
   );
   setDisabled(dom.startBattle, true);
@@ -1042,6 +1078,8 @@ function getStatusLine(actor) {
   const statuses = [];
   if (actor.freezeFor > 0) statuses.push(`Frozen ${actor.freezeFor.toFixed(1)}s`);
   if (actor.disableFor > 0) statuses.push(`Disabled ${actor.disableFor.toFixed(1)}s`);
+  if (actor.strikerModeFor > 0) statuses.push(`Striker ${actor.strikerModeFor.toFixed(1)}s`);
+  if (actor.goldenModeFor > 0) statuses.push(`Golden ${actor.goldenModeFor.toFixed(1)}s`);
   if (actor.berserkState) statuses.push(actor.berserkState.name);
   if (actor.armorBreak > 0) statuses.push(`Armour break +${actor.armorBreak}%`);
   if (actor.plasmaDebuffFor > 0) statuses.push(`Plasma debuff ${actor.plasmaDebuffFor.toFixed(1)}s`);
