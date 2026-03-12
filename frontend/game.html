@@ -8,19 +8,6 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Special+Elite&family=Share+Tech+Mono&display=swap" rel="stylesheet" />
   <style>
-    :root {
-      --bg: #070a0e;
-      --panel: rgba(17, 22, 28, 0.92);
-      --panel-strong: #0f141a;
-      --line: #32ff8b;
-      --line-soft: rgba(50, 255, 139, 0.28);
-      --danger: #ff6a57;
-      --warn: #ffd166;
-      --text: #ebeff5;
-      --muted: #90a0b2;
-      --accent: #78c8ff;
-    }
-
     * {
       box-sizing: border-box;
     }
@@ -28,420 +15,77 @@
     body {
       margin: 0;
       min-height: 100vh;
-      font-family: "Share Tech Mono", monospace;
-      color: var(--text);
-      background:
-        radial-gradient(circle at 10% 10%, rgba(44, 135, 78, 0.25), transparent 34%),
-        radial-gradient(circle at 90% 18%, rgba(70, 104, 176, 0.18), transparent 28%),
-        linear-gradient(180deg, #0b1016 0%, #06090d 100%);
-    }
-
-    .site-header {
-      border-bottom: 2px solid var(--line);
-      padding: 18px 24px;
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      gap: 16px;
-      background: rgba(6, 10, 14, 0.84);
-      backdrop-filter: blur(6px);
-    }
-
-    .brand {
-      margin: 0;
-      color: var(--line);
-      font-family: "Special Elite", monospace;
-      letter-spacing: 2px;
-      font-size: clamp(1.35rem, 2.8vw, 2.1rem);
-      text-shadow: 0 0 10px rgba(50, 255, 139, 0.35);
-    }
-
-    .nav {
-      display: flex;
-      gap: 22px;
-      flex-wrap: wrap;
-    }
-
-    .nav a {
-      color: var(--text);
-      text-decoration: none;
-      font-family: "Special Elite", monospace;
-    }
-
-    .shell {
-      width: min(1240px, calc(100% - 24px));
-      margin: 24px auto 40px;
-      display: grid;
-      grid-template-columns: 1.2fr 0.9fr;
-      gap: 18px;
-    }
-
-    .stack {
-      display: grid;
-      gap: 18px;
-    }
-
-    .panel {
-      background: var(--panel);
-      border: 1px solid var(--line-soft);
-      box-shadow: 0 0 0 1px rgba(50, 255, 139, 0.08), 0 14px 40px rgba(0, 0, 0, 0.33);
-      padding: 18px;
-    }
-
-    .panel h2,
-    .panel h3,
-    .panel h4,
-    .panel p {
-      margin-top: 0;
-    }
-
-    .hero {
-      display: grid;
-      grid-template-columns: 1fr auto;
-      gap: 18px;
-      align-items: start;
-    }
-
-    .bot-select-wrap {
-      margin: 16px 0;
-      display: flex;
-      flex-direction: column;
-      gap: 6px;
-    }
-
-    .hero h2 {
-      margin-bottom: 8px;
-      color: var(--line);
-      font-family: "Special Elite", monospace;
-      letter-spacing: 2px;
-      font-size: clamp(1.6rem, 3vw, 2.4rem);
-    }
-
-    .hero p {
-      color: var(--muted);
-      line-height: 1.55;
-      margin-bottom: 0;
-    }
-
-    .summary {
-      display: grid;
-      grid-template-columns: repeat(4, minmax(0, 1fr));
-      gap: 10px;
-      margin-top: 18px;
-    }
-
-    .summary .tile,
-    .fighter-card,
-    .log,
-    .upgrade,
-    .berserk,
-    .inventory-item {
-      background: var(--panel-strong);
-      border: 1px solid rgba(255, 255, 255, 0.08);
-    }
-
-    .tile {
-      padding: 12px;
-    }
-
-    .tile .label {
-      display: block;
-      color: var(--muted);
-      font-size: 0.84rem;
-      margin-bottom: 6px;
-      text-transform: uppercase;
-      letter-spacing: 1px;
-    }
-
-    .tile strong {
-      font-size: 1.2rem;
-      color: var(--text);
-    }
-
-    .buttons,
-    .action-row {
-      display: flex;
-      gap: 10px;
-      flex-wrap: wrap;
-    }
-
-    button {
-      border: 1px solid var(--line-soft);
-      background: transparent;
-      color: var(--text);
-      font: inherit;
-      padding: 11px 14px;
-      cursor: pointer;
-      transition: transform 120ms ease, background-color 120ms ease, border-color 120ms ease;
-    }
-
-    button:hover:enabled {
-      transform: translateY(-1px);
-      background: rgba(50, 255, 139, 0.08);
-      border-color: rgba(50, 255, 139, 0.65);
-    }
-
-    button.primary {
-      color: var(--line);
-      text-shadow: 0 0 8px rgba(50, 255, 139, 0.32);
-    }
-
-    button.warn {
-      border-color: rgba(255, 209, 102, 0.4);
-      color: var(--warn);
-    }
-
-    button:disabled {
-      opacity: 0.5;
-      cursor: not-allowed;
-      transform: none;
-    }
-
-    .arena {
-      display: grid;
-      grid-template-columns: 1fr 1fr;
-      gap: 14px;
-      margin-top: 16px;
-    }
-
-    .fighter-card {
-      padding: 14px;
-    }
-
-    .fighter-card h3 {
-      margin-bottom: 8px;
-      font-family: "Special Elite", monospace;
-      letter-spacing: 1px;
-    }
-
-    .fighter-top {
-      display: flex;
-      justify-content: space-between;
-      gap: 12px;
-      align-items: baseline;
-    }
-
-    .health-track,
-    .cooldown-track {
-      width: 100%;
-      height: 12px;
-      background: rgba(255, 255, 255, 0.08);
       overflow: hidden;
-      margin: 10px 0 8px;
+      font-family: "Share Tech Mono", monospace;
+      background: #000;
+      color: white;
     }
 
-    .bar {
+    .arena-screen {
+      min-height: 100vh;
+    }
+
+    .arena-frame {
+      position: relative;
+      width: 100vw;
+      height: 100vh;
+      overflow: hidden;
+    }
+
+    .arena-canvas {
+      width: 100%;
       height: 100%;
-      width: 0;
-      transition: width 120ms linear;
+      display: block;
+      cursor: crosshair;
     }
 
-    .health-bar {
-      background: linear-gradient(90deg, #2be37f, #abff70);
+    .support {
+      position: absolute;
+      width: 1px;
+      height: 1px;
+      padding: 0;
+      margin: -1px;
+      overflow: hidden;
+      clip: rect(0, 0, 0, 0);
+      white-space: nowrap;
+      border: 0;
     }
 
-    .enemy-bar {
-      background: linear-gradient(90deg, #ff7d6d, #ffb066);
-    }
-
-    .cooldown-bar {
-      background: linear-gradient(90deg, #68b4ff, #87ffe7);
-    }
-
-    .stats-grid,
-    .inventory {
-      display: grid;
-      grid-template-columns: repeat(2, minmax(0, 1fr));
-      gap: 8px;
-    }
-
-    .stat-pill {
-      padding: 8px 10px;
-      border: 1px solid rgba(255, 255, 255, 0.06);
-      color: var(--muted);
-      font-size: 0.88rem;
-    }
-
-    .status-line {
-      min-height: 22px;
-      color: var(--warn);
-      font-size: 0.9rem;
-    }
-
-    .log {
-      padding: 12px;
-      height: 280px;
-      overflow: auto;
-      line-height: 1.5;
-      color: #dce4ef;
-      white-space: pre-wrap;
-    }
-
-    .store-grid {
-      display: grid;
-      gap: 12px;
-    }
-
-    .upgrade,
-    .berserk,
-    .inventory-item {
-      padding: 12px;
-    }
-
-    .upgrade h4,
-    .berserk h4,
-    .inventory-item h4 {
-      margin-bottom: 8px;
-      color: var(--accent);
-    }
-
-    .meta {
-      color: var(--muted);
-      font-size: 0.92rem;
-      line-height: 1.45;
-    }
-
-    .badge {
-      display: inline-block;
-      padding: 3px 8px;
-      border: 1px solid rgba(255, 255, 255, 0.12);
-      color: var(--warn);
-      font-size: 0.8rem;
-      margin-bottom: 8px;
-    }
-
-    @media (max-width: 980px) {
-      .shell,
-      .hero,
-      .arena {
-        grid-template-columns: 1fr;
-      }
-    }
-
-    @media (max-width: 680px) {
-      .summary,
-      .stats-grid,
-      .inventory {
-        grid-template-columns: 1fr;
-      }
-
-      .site-header {
-        padding: 16px 14px;
-      }
-
-      .shell {
-        width: min(100%, calc(100% - 12px));
-        margin-top: 12px;
-      }
-    }
   </style>
 </head>
 <body>
-  <header class="site-header" aria-label="Primary navigation">
-    <h1 class="brand">RUNTIME TERROR</h1>
-    <nav class="nav">
-      <a href="./index.html">Home</a>
-      <a href="./index.html#docs">Docs</a>
-      <a href="./index.html#leaderboard">Leaderboard</a>
-      <a href="./game-search.html">Game</a>
-      <a href="./profile-settings.html">Profile</a>
-      <a href="./login.html">Login</a>
-      <a href="./signup.html">Sign Up</a>
-    </nav>
-  </header>
+  <main class="arena-screen">
+    <section class="arena-frame" aria-label="Solo arena">
+      <canvas id="arena-canvas" class="arena-canvas" width="1280" height="720"></canvas>
 
-  <main class="shell">
-    <section class="stack">
-      <section class="panel">
-        <div class="hero">
-          <div>
-            <h2>Solo Arena</h2>
-            <p>Fight escalating AI battle bots, spend winnings on modules, and survive long enough to reach Tier 7+ enemies with unique salvage drops.</p>
-            <div class="bot-select-wrap">
-              <label for="bot-select" style="color: var(--muted); font-size: 0.9rem; text-transform: uppercase; letter-spacing: 1px;">Select Chassis</label>
-              <select id="bot-select" style="background: var(--panel-strong); color: var(--text); border: 1px solid var(--line-soft); padding: 8px 12px; font-family: inherit; font-size: 1rem; cursor: pointer; max-width: 100%;">
-                <option value="acid">Acid Bot (30dmg / 2s)</option>
-                <option value="sawblade">Sawblade Bot (45dmg / 2s)</option>
-                <option value="hacker">Hacker Bot (40dmg / 3s)</option>
-                <option value="sniper">Sniper Bot (50dmg / 3s)</option>
-                <option value="claymore">Claymore Roomba (65dmg / 3.4s)</option>
-              </select>
-            </div>
-          </div>
-          <div class="buttons">
-            <button id="start-battle" class="primary" type="button">Start Encounter</button>
-            <button id="reset-save" class="warn" type="button">Reset Save</button>
-          </div>
-        </div>
-        <div class="summary">
-          <div class="tile"><span class="label">Encounter</span><strong id="encounter-value"></strong></div>
-          <div class="tile"><span class="label">Money</span><strong id="money-value"></strong></div>
-          <div class="tile"><span class="label">Record</span><strong id="record-value"></strong></div>
-          <div class="tile"><span class="label">Difficulty</span><strong id="difficulty-value"></strong></div>
-        </div>
-      </section>
-
-      <section class="panel">
-        <h3>Battlefield</h3>
-        <div class="arena">
-          <article class="fighter-card">
-            <div class="fighter-top">
-              <div style="display: flex; align-items: center; gap: 12px;">
-                <img id="player-icon" src="" alt="Player" style="width: 42px; height: 42px; object-fit: contain; background: #000; border: 1px solid #333; border-radius: 4px; display: none;">
-                <h3>Your Bot</h3>
-              </div>
-              <strong id="player-health-text">100 / 100</strong>
-            </div>
-            <div class="health-track"><div id="player-health-bar" class="bar health-bar"></div></div>
-            <div class="cooldown-track"><div id="player-cooldown-bar" class="bar cooldown-bar"></div></div>
-            <div id="player-status" class="status-line"></div>
-            <div id="player-stats" class="stats-grid"></div>
-          </article>
-
-          <article class="fighter-card">
-            <div class="fighter-top">
-              <div style="display: flex; align-items: center; gap: 12px;">
-                <img id="enemy-icon" src="" alt="Enemy" style="width: 42px; height: 42px; object-fit: contain; background: #000; border: 1px solid #333; border-radius: 4px; display: none;">
-                <h3 id="enemy-name">Enemy Bot</h3>
-              </div>
-              <strong id="enemy-health-text">100 / 100</strong>
-            </div>
-            <div class="health-track"><div id="enemy-health-bar" class="bar enemy-bar"></div></div>
-            <div class="cooldown-track"><div id="enemy-cooldown-bar" class="bar cooldown-bar"></div></div>
-            <div id="enemy-status" class="status-line"></div>
-            <div id="enemy-stats" class="stats-grid"></div>
-          </article>
-        </div>
-
-        <div class="action-row" style="margin-top: 14px;">
-          <button id="fire-button" class="primary" type="button" disabled>Fire Cannon</button>
-          <button id="berserk-button" type="button" disabled>Activate Berserk</button>
-        </div>
-
-        <h4 style="margin: 16px 0 8px;">Combat Log</h4>
-        <div id="battle-log" class="log"></div>
+      <section class="support" aria-hidden="true">
+        <button id="start-battle" type="button">Start</button>
+        <button id="reset-save" type="button">Reset</button>
+        <div id="encounter-value"></div>
+        <div id="money-value"></div>
+        <div id="record-value"></div>
+        <div id="difficulty-value"></div>
+        <div id="battle-log"></div>
+        <div id="player-health-text"></div>
+        <div id="enemy-health-text"></div>
+        <div id="player-health-bar"></div>
+        <div id="enemy-health-bar"></div>
+        <div id="player-cooldown-bar"></div>
+        <div id="enemy-cooldown-bar"></div>
+        <div id="player-stats"></div>
+        <div id="enemy-stats"></div>
+        <div id="player-status"></div>
+        <div id="enemy-status"></div>
+        <div id="enemy-name"></div>
+        <button id="fire-button" type="button">Fire</button>
+        <button id="berserk-button" type="button">Berserk</button>
+        <div id="upgrade-shop"></div>
+        <div id="berserk-shop"></div>
+        <div id="unique-inventory"></div>
       </section>
     </section>
-
-    <aside class="stack">
-      <section class="panel">
-        <h3>Upgrade Shop</h3>
-        <div id="upgrade-shop" class="store-grid"></div>
-      </section>
-
-      <section class="panel">
-        <h3>Berserk Modules</h3>
-        <div id="berserk-shop" class="store-grid"></div>
-      </section>
-
-      <section class="panel">
-        <h3>Unique Salvage</h3>
-        <div id="unique-inventory" class="inventory"></div>
-      </section>
-    </aside>
   </main>
 
-  <script type="module" src="./nav.js"></script>
   <script type="module" src="./game.js"></script>
 </body>
 </html>

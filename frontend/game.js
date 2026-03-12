@@ -1,8 +1,8 @@
 const STORAGE_KEY = "runtime-terror-solo-save-v1";
-const TICK_MS = 16;
+const TICK_MS = 100;
 const BASE_HEALTH = 100;
 const BASE_PLAYER_DAMAGE = 22;
-const BASE_PLAYER_COOLDOWN = 1.0;
+const BASE_PLAYER_COOLDOWN = 1.6;
 const BASE_MOVE_SPEED = 180;
 
 const MODULES = [
@@ -135,56 +135,7 @@ const dom = {
   upgradeShop: document.querySelector("#upgrade-shop"),
   berserkShop: document.querySelector("#berserk-shop"),
   uniqueInventory: document.querySelector("#unique-inventory"),
-  botSelect: document.querySelector("#bot-select"),
-  playerIcon: document.querySelector("#player-icon"),
-  enemyIcon: document.querySelector("#enemy-icon"),
-  textOverlay: null,
 };
-
-// WebGL Globals
-let gl = null;
-let glProgram = null;
-let glTextCtx = null;
-let glBuffer = null;
-let glLocs = null;
-
-const VS_SRC = `
-attribute vec2 a_pos;
-uniform vec2 u_res;
-uniform vec2 u_trans;
-uniform vec2 u_scale;
-uniform float u_rot;
-varying vec2 v_uv;
-void main() {
-    v_uv = a_pos; 
-    vec2 p = a_pos * u_scale;
-    float c = cos(u_rot);
-    float s = sin(u_rot);
-    p = vec2(p.x * c - p.y * s, p.x * s + p.y * c);
-    p += u_trans;
-    vec2 clip = (p / u_res) * 2.0 - 1.0;
-    clip.y *= -1.0;
-    gl_Position = vec4(clip, 0, 1);
-}`;
-
-const FS_SRC = `
-precision mediump float;
-uniform vec4 u_color;
-uniform int u_type; // 0=rect, 1=circle, 2=ring
-uniform float u_param;
-varying vec2 v_uv;
-void main() {
-    if (u_type == 0) {
-        gl_FragColor = u_color;
-    } else {
-        float d = length(v_uv);
-        float alpha = 0.0;
-        float delta = 0.05; // Smoothing factor
-        if (u_type == 1) alpha = 1.0 - smoothstep(1.0 - delta, 1.0, d);
-        else if (u_type == 2) alpha = smoothstep(1.0 - u_param - delta, 1.0 - u_param, d) * (1.0 - smoothstep(1.0 - delta, 1.0, d));
-        gl_FragColor = vec4(u_color.rgb, u_color.a * alpha);
-    }
-}`;
 
 let state = loadState();
 let battle = null;
@@ -304,14 +255,15 @@ function getPlayerProfile() {
     armorBonus,
     speedBonus,
     maxHealth: roundNumber(BASE_HEALTH * healthMultiplier),
+    shotDamage: roundNumber(BASE_PLAYER_DAMAGE * (1 + damageBonus / 100)),
     elementalDamage: hasElemental ? roundNumber(BASE_PLAYER_DAMAGE * 0.1) : 0,
+    cooldown: BASE_PLAYER_COOLDOWN / (1 + speedBonus / 100),
   };
 }
 
 function getEnemyBlueprint() {
   const stage = getProgressionStage(state.encounter);
-  // Randomize AI bot selection
-  const bot = BOT_TYPES[Math.floor(Math.random() * BOT_TYPES.length)];
+  const bot = BOT_TYPES[(state.encounter - 1) % BOT_TYPES.length];
   const moduleLevels = { damage: 0, health: 0, armor: 0, speed: 0 };
   const moduleKeys = Object.keys(moduleLevels);
   const modulePoints = Math.min(32, stage + Math.floor(stage / 2));
@@ -388,18 +340,14 @@ function startBattle() {
     autoAdvanceTimeout = null;
   }
 
-  const selectedKey = dom.botSelect ? dom.botSelect.value : "acid";
-  const selectedBot = BOT_TYPES.find((b) => b.key === selectedKey) || BOT_TYPES[0];
   const playerProfile = getPlayerProfile();
   const enemyBlueprint = getEnemyBlueprint();
   const player = createActor("player", {
-    key: selectedKey,
-    name: selectedBot.name,
+    key: "player",
+    name: "Your Bot",
     ...playerProfile,
-    shotDamage: roundNumber(selectedBot.damage * (1 + playerProfile.damageBonus / 100)),
-    cooldown: selectedBot.cooldown / (1 + playerProfile.speedBonus / 100),
     berserks: state.berserks,
-    attackImpl: selectedBot.attack,
+    attackImpl: playerAttack,
     x: 220,
     y: 420,
     moveSpeed: BASE_MOVE_SPEED * (1 + playerProfile.speedBonus / 100),
@@ -421,14 +369,10 @@ function startBattle() {
     y: 420,
     moveSpeed: BASE_MOVE_SPEED * (1 + enemyBlueprint.speedBonus / 100) * 0.92,
   });
-  // Delay enemy first shot by 1 second
-  enemy.cooldownRemaining = 1.0;
-  player.cooldownRemaining = 1.0;
 
   battle = {
     startedAt: Date.now(),
     logLines: [],
-    lastLogLength: 0,
     player,
     enemy,
     enemyBlueprint,
@@ -655,12 +599,6 @@ function applyDamage(target, amount, source, attackerName, options = {}) {
   return finalDamage;
 }
 
-function checkSecondaryEffects(attacker, defender) {
-  if (attacker.elementalDamage > 0) {
-    applyDamage(defender, attacker.elementalDamage, "elemental splash", attacker.name, { projectile: false });
-  }
-}
-
 function playerAttack(attacker, defender) {
   const damage = attacker.shotDamage;
   applyDamage(defender, damage, "cannon shot", attacker.name);
@@ -677,7 +615,6 @@ function acidAttack(attacker, defender) {
     defender.armorBreak = 20;
     pushLog(`${defender.name}'s armour has corroded. Incoming damage increased by 20%.`);
   }
-  checkSecondaryEffects(attacker, defender);
 }
 
 function sawbladeAttack(attacker, defender) {
@@ -686,7 +623,6 @@ function sawbladeAttack(attacker, defender) {
   attacker.sawLoss += lossStep;
   const base = attacker.shotDamage - attacker.sawLoss - (attacker.unique7 ? 7 : 0);
   applyDamage(defender, Math.max(8, base), "saw swing", attacker.name);
-  checkSecondaryEffects(attacker, defender);
 }
 
 function hackerAttack(attacker, defender) {
@@ -703,7 +639,6 @@ function hackerAttack(attacker, defender) {
     applyDamage(defender, chainedDamage, "rehack", attacker.name, { projectile: false });
     pushLog("Hyper Efficient Coding triggered a weaker re-hack.");
   }
-  checkSecondaryEffects(attacker, defender);
 }
 
 function sniperAttack(attacker, defender) {
@@ -721,7 +656,6 @@ function sniperAttack(attacker, defender) {
       pushLog(`${defender.name} is destabilized. Damage, speed, and health efficiency reduced by 10%.`);
     }
   }
-  checkSecondaryEffects(attacker, defender);
 }
 
 function claymoreAttack(attacker, defender) {
@@ -734,7 +668,6 @@ function claymoreAttack(attacker, defender) {
     defender.burnDamage = 10;
     pushLog(`${defender.name} is burning for 2 seconds.`);
   }
-  checkSecondaryEffects(attacker, defender);
 }
 
 function maybeAutoBerserk(actor, opponent) {
@@ -919,11 +852,6 @@ function syncBattleUi() {
   if (!battle) {
     setText(dom.enemyName, "Enemy Bot");
     setText(dom.playerHealthText, `${playerProfile.maxHealth} / ${playerProfile.maxHealth}`);
-    if (dom.playerIcon) {
-      dom.playerIcon.style.display = "none";
-      if (dom.botSelect) dom.playerIcon.src = `compressed-images/${dom.botSelect.value}.png`;
-    }
-    if (dom.enemyIcon) dom.enemyIcon.style.display = "none";
     setText(dom.enemyHealthText, "100 / 100");
     setWidth(dom.playerHealthBar, "100%");
     setWidth(dom.enemyHealthBar, "100%");
@@ -952,15 +880,6 @@ function syncBattleUi() {
   const { player, enemy, enemyBlueprint } = battle;
   setText(dom.enemyName, enemy.name);
   setText(dom.playerHealthText, `${roundNumber(player.health)} / ${roundNumber(player.maxHealth)}`);
-  if (dom.playerIcon) {
-    dom.playerIcon.src = `compressed-images/${player.key}.png`;
-    dom.playerIcon.style.display = "block";
-  }
-  if (dom.enemyIcon) {
-    dom.enemyIcon.src = `compressed-images/${enemy.key}.png`;
-    dom.enemyIcon.style.display = "block";
-  }
-
   setText(dom.enemyHealthText, `${roundNumber(enemy.health)} / ${roundNumber(enemy.maxHealth)}`);
   setWidth(dom.playerHealthBar, `${clamp((player.health / player.maxHealth) * 100, 0, 100)}%`);
   setWidth(dom.enemyHealthBar, `${clamp((enemy.health / enemy.maxHealth) * 100, 0, 100)}%`);
@@ -986,11 +905,8 @@ function syncBattleUi() {
     Boolean(player.berserkState)
   );
   setDisabled(dom.startBattle, true);
-  if (battle.logLines.length !== battle.lastLogLength) {
-    setText(dom.battleLog, battle.logLines.join("\n"));
-    if (dom.battleLog) dom.battleLog.scrollTop = dom.battleLog.scrollHeight;
-    battle.lastLogLength = battle.logLines.length;
-  }
+  setText(dom.battleLog, battle.logLines.join("\n"));
+  if (dom.battleLog) dom.battleLog.scrollTop = dom.battleLog.scrollHeight;
   renderArena();
 }
 
@@ -1097,118 +1013,33 @@ function scheduleAutoAdvance() {
   }, 1100);
 }
 
-function initWebGL() {
-  const canvas = dom.arenaCanvas;
-  if (!canvas) return false;
-
-  // Setup Text Overlay
-  if (!dom.textOverlay) {
-    dom.textOverlay = document.createElement("canvas");
-    dom.textOverlay.style.position = "absolute";
-    dom.textOverlay.style.top = "0";
-    dom.textOverlay.style.left = "0";
-    dom.textOverlay.style.pointerEvents = "none";
-    canvas.parentNode.style.position = "relative";
-    canvas.parentNode.insertBefore(dom.textOverlay, canvas.nextSibling);
-    glTextCtx = dom.textOverlay.getContext("2d");
-  }
-
-  // Setup WebGL
-  gl = canvas.getContext("webgl", { alpha: false, antialias: true });
-  if (!gl) return false;
-
-  // Shader Compilation
-  const vs = gl.createShader(gl.VERTEX_SHADER);
-  gl.shaderSource(vs, VS_SRC);
-  gl.compileShader(vs);
-  
-  const fs = gl.createShader(gl.FRAGMENT_SHADER);
-  gl.shaderSource(fs, FS_SRC);
-  gl.compileShader(fs);
-
-  glProgram = gl.createProgram();
-  gl.attachShader(glProgram, vs);
-  gl.attachShader(glProgram, fs);
-  gl.linkProgram(glProgram);
-  gl.useProgram(glProgram);
-
-  // Cache Uniforms to reduce lag
-  glLocs = {
-    res: gl.getUniformLocation(glProgram, "u_res"),
-    trans: gl.getUniformLocation(glProgram, "u_trans"),
-    scale: gl.getUniformLocation(glProgram, "u_scale"),
-    rot: gl.getUniformLocation(glProgram, "u_rot"),
-    type: gl.getUniformLocation(glProgram, "u_type"),
-    param: gl.getUniformLocation(glProgram, "u_param"),
-    color: gl.getUniformLocation(glProgram, "u_color"),
-  };
-
-  // Quad Buffer
-  glBuffer = gl.createBuffer();
-  gl.bindBuffer(gl.ARRAY_BUFFER, glBuffer);
-  gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1, -1, 1, -1, -1, 1, 1, 1]), gl.STATIC_DRAW);
-  
-  const aPos = gl.getAttribLocation(glProgram, "a_pos");
-  gl.enableVertexAttribArray(aPos);
-  gl.vertexAttribPointer(aPos, 2, gl.FLOAT, false, 0, 0);
-
-  // Transparency
-  gl.enable(gl.BLEND);
-  gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
-  
-  return true;
-}
-
-function hexToRgba(hex, alpha = 1.0) {
-  let c = hex.substring(1).split('');
-  if(c.length === 3) c = [c[0], c[0], c[1], c[1], c[2], c[2]];
-  c = '0x' + c.join('');
-  return [(c>>16)&255, (c>>8)&255, c&255, alpha * 255];
-}
-
-function glSetColor(hex, alpha = 1.0) {
-  const [r, g, b, a] = hexToRgba(hex, alpha);
-  gl.uniform4f(glLocs.color, r/255, g/255, b/255, a/255);
-}
-
-function glDrawShape(type, x, y, scaleX, scaleY, rotation, param = 0) {
-  gl.uniform2f(glLocs.trans, x, y);
-  gl.uniform2f(glLocs.scale, scaleX, scaleY);
-  gl.uniform1f(glLocs.rot, rotation);
-  gl.uniform1i(glLocs.type, type);
-  gl.uniform1f(glLocs.param, param);
-  gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+function getArenaContext() {
+  if (!dom.arenaCanvas) return null;
+  const context = dom.arenaCanvas.getContext("2d");
+  return context;
 }
 
 function renderArena() {
-  if (!gl) { if (!initWebGL()) return; }
-  if (!glTextCtx) return;
+  const context = getArenaContext();
+  if (!context || !dom.arenaCanvas) return;
 
   const canvas = dom.arenaCanvas;
   const width = canvas.width;
   const height = canvas.height;
   const now = performance.now() / 1000;
 
-  // Update Resolution
-  gl.viewport(0, 0, width, height);
-  gl.uniform2f(glLocs.res, width, height);
-
-  // Clear WebGL
-  gl.clearColor(0, 0, 0, 1);
-  gl.clear(gl.COLOR_BUFFER_BIT);
-
-  // Clear Text Overlay
-  glTextCtx.clearRect(0, 0, width, height);
+  context.clearRect(0, 0, width, height);
+  context.fillStyle = "#000";
+  context.fillRect(0, 0, width, height);
 
   if (!battle) {
     const playerX = width * 0.23;
     const enemyX = width * 0.7;
     const playerY = height * 0.58;
     const enemyY = height * 0.58;
-    
-    drawHudText(glTextCtx, 150, 10, distanceUnits(playerX, playerY, enemyX, enemyY));
-    drawPlayerBotGL(playerX, playerY, 150, 150, 10, now);
-    drawEnemyBotGL(enemyX, enemyY, 200, 200, now);
+    drawHudText(context, 150, 10, distanceUnits(playerX, playerY, enemyX, enemyY));
+    drawPlayerBot(context, playerX, playerY, 150, 150, 10, now);
+    drawEnemyBot(context, enemyX, enemyY, 200, 200, now);
     return;
   }
 
@@ -1220,112 +1051,128 @@ function renderArena() {
   const enemyY = enemy.y * (height / 720);
   const playerAmmo = Math.round(cooldownPercent(player) / 10);
 
-  drawHudText(glTextCtx, player.health, playerAmmo, distanceUnits(playerX, playerY, enemyX, enemyY));
-  drawPlayerBotGL(playerX, playerY, player.health, player.maxHealth, playerAmmo, now, player);
-  drawEnemyBotGL(enemyX, enemyY, enemy.health, enemy.maxHealth, now, enemy);
-  drawShotGL(playerX + 16 * player.facing, playerY - 16, enemyX - 18 * enemy.facing, enemyY - 6, justFired(player), "#2f44ff");
-  drawShotGL(enemyX + 14 * enemy.facing, enemyY - 4, playerX + 12 * player.facing, playerY - 12, justFired(enemy), "#ff4338");
+  drawHudText(context, player.health, playerAmmo, distanceUnits(playerX, playerY, enemyX, enemyY));
+  drawPlayerBot(context, playerX, playerY, player.health, player.maxHealth, playerAmmo, now, player);
+  drawEnemyBot(context, enemyX, enemyY, enemy.health, enemy.maxHealth, now, enemy);
+  drawShot(context, playerX + 16 * player.facing, playerY - 16, enemyX - 18 * enemy.facing, enemyY - 6, justFired(player), "#2f44ff");
+  drawShot(context, enemyX + 14 * enemy.facing, enemyY - 4, playerX + 12 * player.facing, playerY - 12, justFired(enemy), "#ff4338");
 }
 
 function drawHudText(context, hp, ammo, dist) {
-  if (!context) return;
   context.save();
   context.fillStyle = "#f5f5f5";
   context.font = '700 28px "Share Tech Mono", monospace';
   context.textBaseline = "top";
-  context.fillText(`HP: ${Math.max(0, Math.round(hp))} | AMMO: ${Math.max(0, ammo)} | DIST: ${dist.toFixed(1)}U`, 28, 20);
+  context.fillText(`HP: ${Math.max(0, Math.round(hp))} | AMMO: ${Math.max(0, ammo)} | DIST: ${dist.toFixed(1)}U`, 28, 24);
   context.restore();
 }
 
-function drawPlayerBotGL(x, y, health, maxHealth, ammo, now, actor = null) {
-  // 1. Ring
-  glSetColor("#0f25ff");
-  glDrawShape(2, x, y, 40, 40, 0, 0.15); // x, y, radius, radius, rot, thickness
+function drawPlayerBot(context, x, y, health, maxHealth, ammo, now, actor = null) {
+  context.save();
+  context.translate(x, y);
 
-  // 2. Body
-  glSetColor("#3948ff");
-  glDrawShape(1, x, y, 25, 25, 0);
+  context.strokeStyle = "#0f25ff";
+  context.lineWidth = 6;
+  context.beginPath();
+  context.arc(0, 0, 40, 0, Math.PI * 2);
+  context.stroke();
 
-  // 3. Cannon
-  glSetColor("#0f25ff", 0.95);
-  const facing = actor?.facing || 1;
-  const angle = facing === 1 ? -Math.PI / 4 : -Math.PI * 0.75;
-  const cannonLen = 37;
-  const cx = x + Math.cos(angle) * (cannonLen / 2);
-  const cy = y + Math.sin(angle) * (cannonLen / 2);
-  glDrawShape(0, cx, cy, cannonLen / 2, 2, angle);
+  context.fillStyle = "#3948ff";
+  context.beginPath();
+  context.arc(0, 0, 25, 0, Math.PI * 2);
+  context.fill();
+
+  context.strokeStyle = "rgba(15, 37, 255, 0.95)";
+  context.lineWidth = 4;
+  context.beginPath();
+  context.moveTo(0, 0);
+  context.lineTo(26 * (actor?.facing || 1), -26);
+  context.stroke();
 
   if (actor?.berserkState) {
-    glSetColor("#ffd24d");
-    const r = 50 + Math.sin(now * 16) * 2;
-    glDrawShape(2, x, y, r, r, 0, 0.05);
+    context.strokeStyle = "#ffd24d";
+    context.lineWidth = 3;
+    context.beginPath();
+    context.arc(0, 0, 50 + Math.sin(now * 16) * 2, 0, Math.PI * 2);
+    context.stroke();
   }
 
   if (actor && isDisabled(actor)) {
-    glSetColor("#8fd3ff");
-    glDrawShape(2, x, y, 56, 56, 0, 0.03); // Solid for now in GL
+    context.strokeStyle = "#8fd3ff";
+    context.setLineDash([6, 6]);
+    context.lineWidth = 2;
+    context.beginPath();
+    context.arc(0, 0, 56, 0, Math.PI * 2);
+    context.stroke();
+    context.setLineDash([]);
   }
 
-  drawHealthBarGL(x - 30, y - 48, 60, health, maxHealth);
-  
-  // Ammo Text (Overlay)
-  glTextCtx.save();
-  glTextCtx.fillStyle = "#ff2b2b";
-  glTextCtx.font = '700 18px "Share Tech Mono", monospace';
-  glTextCtx.fillText(`${Math.max(0, ammo)}`, x + 10, y - 24);
-  glTextCtx.restore();
+  context.restore();
+  drawHealthBar(context, x - 30, y - 48, 60, health, maxHealth);
+
+  context.save();
+  context.fillStyle = "#ff2b2b";
+  context.font = '700 18px "Share Tech Mono", monospace';
+  context.fillText(`${Math.max(0, ammo)}`, x + 10, y - 24);
+  context.restore();
 }
 
-function drawEnemyBotGL(x, y, health, maxHealth, now, actor = null) {
-  // Body
-  glSetColor("#ff3a2f");
-  glDrawShape(1, x, y, 24, 24, 0);
+function drawEnemyBot(context, x, y, health, maxHealth, now, actor = null) {
+  context.save();
+  context.translate(x, y);
+
+  context.fillStyle = "#ff3a2f";
+  context.beginPath();
+  context.arc(0, 0, 24, 0, Math.PI * 2);
+  context.fill();
 
   if (actor?.berserkState) {
-    glSetColor("#ffd24d");
-    const r = 36 + Math.sin(now * 16) * 2;
-    glDrawShape(2, x, y, r, r, 0, 0.08);
+    context.strokeStyle = "#ffd24d";
+    context.lineWidth = 3;
+    context.beginPath();
+    context.arc(0, 0, 36 + Math.sin(now * 16) * 2, 0, Math.PI * 2);
+    context.stroke();
   }
 
   if (actor && isDisabled(actor)) {
-    glSetColor("#8fd3ff");
-    glDrawShape(2, x, y, 42, 42, 0, 0.04);
+    context.strokeStyle = "#8fd3ff";
+    context.setLineDash([6, 6]);
+    context.lineWidth = 2;
+    context.beginPath();
+    context.arc(0, 0, 42, 0, Math.PI * 2);
+    context.stroke();
+    context.setLineDash([]);
   }
 
-  drawHealthBarGL(x - 30, y - 48, 60, health, maxHealth);
+  context.restore();
+  drawHealthBar(context, x - 30, y - 48, 60, health, maxHealth);
 
-  // HP Text (Overlay)
-  glTextCtx.save();
-  glTextCtx.fillStyle = "#f5f5f5";
-  glTextCtx.font = '700 18px "Share Tech Mono", monospace';
-  glTextCtx.fillText(`${Math.max(0, Math.round(health))}`, x + 38, y - 40);
-  glTextCtx.restore();
+  context.save();
+  context.fillStyle = "#f5f5f5";
+  context.font = '700 18px "Share Tech Mono", monospace';
+  context.fillText(`${Math.max(0, Math.round(health))}`, x + 38, y - 40);
+  context.restore();
 }
 
-function drawHealthBarGL(x, y, width, health, maxHealth) {
-  const h = 8;
-  // Background
-  glSetColor("#114400");
-  // GL rect is drawn from center, so offset x/y by half width/height
-  glDrawShape(0, x + width/2, y + h/2, width/2, h/2, 0);
-  
-  // Foreground
-  const fillPct = clamp(health / Math.max(maxHealth, 1), 0, 1);
-  const fillW = width * fillPct;
-  glSetColor("#00ff1a");
-  glDrawShape(0, x + fillW/2, y + h/2, fillW/2, h/2, 0);
+function drawHealthBar(context, x, y, width, health, maxHealth) {
+  context.save();
+  context.fillStyle = "#114400";
+  context.fillRect(x, y, width, 8);
+  context.fillStyle = "#00ff1a";
+  context.fillRect(x, y, width * clamp(health / Math.max(maxHealth, 1), 0, 1), 8);
+  context.restore();
 }
 
-function drawShotGL(fromX, fromY, toX, toY, active, color) {
+function drawShot(context, fromX, fromY, toX, toY, active, color) {
   if (!active) return;
-  glSetColor(color);
-  
-  const cx = (fromX + toX) / 2;
-  const cy = (fromY + toY) / 2;
-  const len = Math.hypot(toX - fromX, toY - fromY);
-  const angle = Math.atan2(toY - fromY, toX - fromX);
-  
-  glDrawShape(0, cx, cy, len/2, 1, angle); // 2px thick line (scaleY=1)
+  context.save();
+  context.strokeStyle = color;
+  context.lineWidth = 2;
+  context.beginPath();
+  context.moveTo(fromX, fromY);
+  context.lineTo(toX, toY);
+  context.stroke();
+  context.restore();
 }
 
 function justFired(actor) {
@@ -1345,13 +1192,9 @@ function resizeArenaCanvas() {
   const nextWidth = Math.max(1, Math.round(bounds.width * ratio));
   const nextHeight = Math.max(1, Math.round(bounds.height * ratio));
 
-  if (dom.arenaCanvas && (dom.arenaCanvas.width !== nextWidth || dom.arenaCanvas.height !== nextHeight)) {
-      dom.arenaCanvas.width = nextWidth;
-      dom.arenaCanvas.height = nextHeight;
-  }
-  if (dom.textOverlay && (dom.textOverlay.width !== nextWidth || dom.textOverlay.height !== nextHeight)) {
-      dom.textOverlay.width = nextWidth;
-      dom.textOverlay.height = nextHeight;
+  if (dom.arenaCanvas.width !== nextWidth || dom.arenaCanvas.height !== nextHeight) {
+    dom.arenaCanvas.width = nextWidth;
+    dom.arenaCanvas.height = nextHeight;
   }
 }
 
@@ -1379,17 +1222,6 @@ if (dom.startBattle) dom.startBattle.addEventListener("click", startBattle);
 if (dom.resetSave) dom.resetSave.addEventListener("click", resetSave);
 if (dom.fireButton) dom.fireButton.addEventListener("click", handlePlayerFire);
 if (dom.berserkButton) dom.berserkButton.addEventListener("click", handlePlayerBerserk);
-if (dom.botSelect && dom.playerIcon) {
-  dom.botSelect.addEventListener("change", () => {
-    if (!battle) {
-       dom.playerIcon.src = `compressed-images/${dom.botSelect.value}.png`;
-       dom.playerIcon.style.display = "block";
-    }
-  });
-  // Init icon state
-  dom.playerIcon.src = `compressed-images/${dom.botSelect.value}.png`;
-  dom.playerIcon.style.display = "block";
-}
 
 if (dom.arenaCanvas) {
   resizeArenaCanvas();
