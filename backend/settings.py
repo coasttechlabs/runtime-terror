@@ -1,5 +1,6 @@
 from pathlib import Path
 import os
+from corsheaders.defaults import default_headers, default_methods
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -14,7 +15,7 @@ def env_bool(name: str, default: bool = False) -> bool:
 
 def env_list(name: str, default: list[str] | None = None) -> list[str]:
     raw = os.getenv(name)
-    if raw is None:
+    if raw is None or not raw.strip():
         return default or []
     return [item.strip() for item in raw.split(",") if item.strip()]
 
@@ -30,8 +31,10 @@ DEBUG = env_bool("DJANGO_DEBUG", False)
 
 ALLOWED_HOSTS = env_list(
     "DJANGO_ALLOWED_HOSTS",
-    ["localhost", "127.0.0.1", "0.0.0.0", ".onrender.com"],
+    ["*"],
 )
+if "*" not in ALLOWED_HOSTS:
+    ALLOWED_HOSTS.append("*")
 
 
 # Application definition
@@ -142,6 +145,7 @@ CORS_ALLOWED_ORIGINS = env_list(
     [
         "http://localhost:10000",
         "http://127.0.0.1:10000",
+        "https://runtime-terror01.netlify.app",
     ],
 )
 CORS_ALLOWED_ORIGIN_REGEXES = env_list(
@@ -152,6 +156,9 @@ CORS_ALLOWED_ORIGIN_REGEXES = env_list(
     ],
 )
 CSRF_TRUSTED_ORIGINS = env_list("CSRF_TRUSTED_ORIGINS")
+CORS_ALLOW_METHODS = list(default_methods)
+CORS_ALLOW_HEADERS = list(default_headers)
+CORS_ALLOW_CREDENTIALS = env_bool("CORS_ALLOW_CREDENTIALS", False)
 
 
 FIREBASE_PROJECT_ID = os.getenv("FIREBASE_PROJECT_ID", "")

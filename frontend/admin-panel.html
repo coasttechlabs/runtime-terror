@@ -116,9 +116,13 @@
 
     .actions {
       display: grid;
-      grid-template-columns: 2fr 1fr auto;
+      grid-template-columns: 2fr auto;
       gap: 10px;
       margin-bottom: 10px;
+    }
+
+    .actions.compact {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
     }
 
     .input-wrap {
@@ -170,35 +174,149 @@
       background: rgba(28, 255, 122, 0.1);
     }
 
-    .table-wrap {
+    .user-list {
       border: 2px solid var(--line-soft);
-      overflow-x: auto;
+      background: rgba(5, 7, 10, 0.24);
+      padding: 12px;
     }
 
-    table {
-      width: 100%;
-      border-collapse: collapse;
-      min-width: 840px;
-    }
-
-    th, td {
+    .user-row {
+      display: grid;
+      grid-template-columns: minmax(0, 1.8fr) auto;
+      gap: 14px;
+      align-items: center;
+      padding: 12px 0;
       border-bottom: 1px solid rgba(188, 199, 224, 0.2);
-      padding: 10px;
-      text-align: left;
-      vertical-align: middle;
     }
 
-    th {
-      color: var(--line);
-      text-transform: uppercase;
-      font-size: 0.85rem;
-      letter-spacing: 1px;
+    .user-row:last-child {
+      border-bottom: 0;
     }
 
-    .row-actions {
+    .user-pill {
+      border: 2px solid var(--line-soft);
+      border-radius: 999px;
+      padding: 16px 22px;
+      background: rgba(255, 255, 255, 0.03);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+      min-width: 0;
+    }
+
+    .user-name {
+      font-size: 1.05rem;
+      color: #f2f2f2;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .user-meta {
+      color: var(--muted);
+      font-size: 0.9rem;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .list-actions,
+    .modal-actions,
+    .command-grid {
       display: flex;
       gap: 8px;
       align-items: center;
+    }
+
+    .list-actions button,
+    .modal-actions button {
+      min-width: 140px;
+      border-radius: 999px;
+    }
+
+    .empty-state {
+      padding: 18px 10px;
+      color: var(--muted);
+    }
+
+    .modal {
+      position: fixed;
+      inset: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 20px;
+      background: rgba(3, 5, 7, 0.8);
+      z-index: 20;
+    }
+
+    .modal-card {
+      width: min(760px, 100%);
+      max-height: min(90vh, 900px);
+      overflow: auto;
+      background: linear-gradient(180deg, rgba(15, 19, 25, 0.98), rgba(8, 11, 15, 0.98));
+      border: 2px solid var(--line-soft);
+      box-shadow: 0 18px 48px rgba(0, 0, 0, 0.5);
+      padding: 22px;
+    }
+
+    .modal-head {
+      display: flex;
+      justify-content: space-between;
+      gap: 16px;
+      align-items: flex-start;
+      margin-bottom: 18px;
+    }
+
+    .modal-title {
+      margin: 0;
+      font-size: clamp(1.4rem, 3.4vw, 2rem);
+      color: var(--line);
+      font-family: "Special Elite", monospace;
+      letter-spacing: 1px;
+    }
+
+    .close-btn {
+      min-width: auto;
+      padding-inline: 16px;
+    }
+
+    .profile-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 12px;
+      margin-bottom: 18px;
+    }
+
+    .profile-card {
+      border: 2px solid rgba(188, 199, 224, 0.2);
+      background: rgba(255, 255, 255, 0.03);
+      padding: 12px;
+    }
+
+    .profile-card strong {
+      display: block;
+      color: var(--line);
+      margin-bottom: 6px;
+      text-transform: uppercase;
+      font-size: 0.82rem;
+      letter-spacing: 1px;
+    }
+
+    .command-panel {
+      border-top: 1px solid rgba(188, 199, 224, 0.2);
+      padding-top: 18px;
+    }
+
+    .command-grid {
+      flex-wrap: wrap;
+      margin-top: 12px;
+    }
+
+    .command-grid button,
+    .command-grid .input-wrap {
+      flex: 1 1 180px;
     }
 
     .hidden { display: none; }
@@ -209,6 +327,11 @@
       .nav a { font-size: 0.95rem; }
       .frame { padding: 16px; }
       .actions { grid-template-columns: 1fr; }
+      .actions.compact { grid-template-columns: 1fr; }
+      .user-row { grid-template-columns: 1fr; }
+      .user-pill { border-radius: 28px; }
+      .list-actions { justify-content: stretch; }
+      .profile-grid { grid-template-columns: 1fr; }
       button { width: 100%; }
     }
 
@@ -227,7 +350,6 @@
       <a href="./index.html#leaderboard">Leaderboard</a>
       <a href="./game-search.html">Game</a>
       <a href="./profile-settings.html">Profile</a>
-      <a href="./admin-panel.html">Admin</a>
       <a href="./login.html">Login</a>
       <a href="./signup.html">Sign Up</a>
     </nav>
@@ -243,53 +365,62 @@
         <label class="input-wrap">
           <input id="lookup" type="text" placeholder="Find user by uid, username, or email" />
         </label>
-        <label class="input-wrap">
-          <select id="target-rank">
-            <option value="player">player</option>
-            <option value="unranked">unranked</option>
-            <option value="mod">mod</option>
-            <option value="admin">admin</option>
-            <option value="Co-Owner">Co-Owner</option>
-            <option value="owner">owner</option>
-            <option value="banned">banned</option>
-          </select>
-        </label>
-        <button id="apply-rank" class="primary" type="button">Update Rank</button>
+        <button id="search-users" class="primary" type="button">Search</button>
       </div>
-      <div class="actions" style="grid-template-columns: 1fr 1fr 1fr;">
-        <button id="cmd-add-level" type="button">Add Level</button>
-        <button id="cmd-remove-level" type="button">Remove Level</button>
-        <button id="cmd-ban" type="button" style="color: var(--warn); border-color: var(--warn);">Ban User</button>
+      <div class="actions compact">
+        <button id="refresh-users" type="button">Refresh List</button>
+        <button id="view-search-result" type="button">View User</button>
       </div>
-      <small>Changes write to `users/{uid}`.</small>
+      <small>Search for a user, then open their profile for commands.</small>
     </section>
 
-    <section id="table-wrap" class="table-wrap hidden" aria-label="User list">
-      <table>
-        <thead>
-          <tr>
-            <th>UID</th>
-            <th>Username</th>
-            <th>Email</th>
-            <th>Current Rank</th>
-            <th>Set Rank</th>
-          </tr>
-        </thead>
-        <tbody id="rows"></tbody>
-      </table>
+    <section id="table-wrap" class="user-list hidden" aria-label="User list">
+      <div id="rows"></div>
     </section>
   </main>
 
+  <section id="user-modal" class="modal hidden" aria-label="User profile panel" aria-hidden="true">
+    <div class="modal-card" role="dialog" aria-modal="true" aria-labelledby="modal-title">
+      <div class="modal-head">
+        <div>
+          <h2 id="modal-title" class="modal-title">User Profile</h2>
+          <p id="modal-subtitle" class="meta">Loading user details...</p>
+        </div>
+        <button id="close-modal" class="close-btn" type="button">Close</button>
+      </div>
+
+      <div id="profile-grid" class="profile-grid"></div>
+
+      <section class="command-panel" aria-label="User commands">
+        <p class="meta">Commands write to `users/{uid}`.</p>
+        <div class="modal-actions">
+          <label class="input-wrap">
+            <select id="modal-rank">
+              <option value="player">player</option>
+              <option value="unranked">unranked</option>
+              <option value="mod">mod</option>
+              <option value="admin">admin</option>
+              <option value="Co-Owner">Co-Owner</option>
+              <option value="owner">owner</option>
+              <option value="banned">banned</option>
+            </select>
+          </label>
+          <button id="apply-rank" class="primary" type="button">Update Rank</button>
+        </div>
+        <div class="command-grid">
+          <button id="cmd-add-level" type="button">Add Level</button>
+          <button id="cmd-remove-level" type="button">Remove Level</button>
+          <button id="cmd-ban" type="button" style="color: var(--warn); border-color: var(--warn);">Ban User</button>
+        </div>
+      </section>
+    </div>
+  </section>
+
   <script type="module" src="./nav.js"></script>
   <script type="module">
-    import { auth, db } from "./firebase.js";
+    import { auth } from "./firebase.js";
     import { getApiBase } from "./api-base.js";
     import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-auth.js";
-    import { collection, doc, getDoc, getDocs, limit, query, serverTimestamp, updateDoc, where } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore.js";
-
-    const USERS_COLLECTION = "users";
-    const ADMIN_RANKS = new Set(["admin", "co-owner", "owner"]);
-    const RANK_OPTIONS = ["player", "unranked", "mod", "admin", "Co-Owner", "owner"];
     const API_BASE = getApiBase();
 
     const adminMeta = document.getElementById("admin-meta");
@@ -298,14 +429,31 @@
     const tableWrap = document.getElementById("table-wrap");
     const rows = document.getElementById("rows");
     const lookupInput = document.getElementById("lookup");
-    const targetRank = document.getElementById("target-rank");
+    const searchUsersButton = document.getElementById("search-users");
+    const refreshUsersButton = document.getElementById("refresh-users");
+    const viewSearchResultButton = document.getElementById("view-search-result");
     const applyRankButton = document.getElementById("apply-rank");
     const addLevelBtn = document.getElementById("cmd-add-level");
     const removeLevelBtn = document.getElementById("cmd-remove-level");
     const banBtn = document.getElementById("cmd-ban");
+    const modal = document.getElementById("user-modal");
+    const closeModalButton = document.getElementById("close-modal");
+    const modalSubtitle = document.getElementById("modal-subtitle");
+    const profileGrid = document.getElementById("profile-grid");
+    const modalRank = document.getElementById("modal-rank");
 
     let activeIdToken = "";
     let cache = [];
+    let activeUser = null;
+
+    function escapeHtml(value) {
+      return String(value ?? "")
+        .replaceAll("&", "&amp;")
+        .replaceAll("<", "&lt;")
+        .replaceAll(">", "&gt;")
+        .replaceAll('"', "&quot;")
+        .replaceAll("'", "&#39;");
+    }
 
     function setStatus(message, type = "") {
       statusEl.textContent = message;
@@ -325,32 +473,24 @@
       });
 
       let payload = null;
+      let rawText = "";
       try {
-        payload = await response.json();
+        rawText = await response.text();
+        payload = rawText ? JSON.parse(rawText) : null;
       } catch (_error) {
         payload = null;
       }
 
       if (!response.ok) {
-        const message = payload?.detail || payload?.rank?.[0] || `Request failed (${response.status})`;
+        const message =
+          payload?.detail ||
+          payload?.rank?.[0] ||
+          (rawText ? rawText.slice(0, 200) : "") ||
+          `Request failed (${response.status})`;
         throw new Error(message);
       }
 
       return payload;
-    }
-
-    function createRankSelect(initialValue) {
-      const select = document.createElement("select");
-      RANK_OPTIONS.forEach((option) => {
-        const el = document.createElement("option");
-        el.value = option;
-        el.textContent = option;
-        if (String(initialValue || "").toLowerCase() === option.toLowerCase()) {
-          el.selected = true;
-        }
-        select.appendChild(el);
-      });
-      return select;
     }
 
     async function updateRankForUid(uid, rankValue) {
@@ -363,10 +503,12 @@
     }
 
     async function updateUserFields(uid, fields) {
-      await updateDoc(doc(db, USERS_COLLECTION, uid), {
-        ...fields,
-        updatedAt: serverTimestamp()
+      const result = await apiRequest(`/admin/users/${encodeURIComponent(uid)}`, {
+        method: "PATCH",
+        token: activeIdToken,
+        body: fields
       });
+      return result.user;
     }
 
     async function findUser(identifier) {
@@ -378,65 +520,133 @@
       return result.users?.[0] || null;
     }
 
+    async function getFullUser(uid) {
+      const result = await apiRequest(`/admin/users/${encodeURIComponent(uid)}`, {
+        token: activeIdToken
+      });
+      const data = result.user || {};
+      return {
+        uid,
+        username: data.username || "",
+        email: data.email || "",
+        rank: data.rank || "unranked",
+        role: data.role || "player",
+        level: Number(data.level || 0),
+        currentStreak: Number(data.currentStreak || 0),
+        longestStreak: Number(data.longestStreak || data.longeststreak || 0),
+        tutorialCompleted: Boolean(data.tutorialCompleted),
+      };
+    }
+
+    function updateCachedUser(user) {
+      const index = cache.findIndex((entry) => entry.uid === user.uid);
+      const summary = {
+        uid: user.uid,
+        username: user.username,
+        email: user.email,
+        rank: user.rank,
+      };
+
+      if (index === -1) {
+        cache.unshift(summary);
+      } else {
+        cache[index] = { ...cache[index], ...summary };
+      }
+    }
+
+    function renderProfile(user) {
+      const fields = [
+        ["Username", user.username || "-"],
+        ["Email", user.email || "-"],
+        ["UID", user.uid],
+        ["Rank", user.rank || "unranked"],
+        ["Role", user.role || "player"],
+        ["Level", String(user.level ?? 0)],
+        ["Current Streak", String(user.currentStreak ?? 0)],
+        ["Longest Streak", String(user.longestStreak ?? 0)],
+        ["Tutorial Completed", user.tutorialCompleted ? "Yes" : "No"],
+      ];
+
+      profileGrid.innerHTML = fields
+        .map(
+          ([label, value]) => `
+            <div class="profile-card">
+              <strong>${escapeHtml(label)}</strong>
+              <span>${escapeHtml(value)}</span>
+            </div>
+          `
+        )
+        .join("");
+      modalSubtitle.textContent = `Managing ${user.username || user.uid}`;
+      modalRank.value = user.rank || "unranked";
+    }
+
+    async function openUserModal(uid) {
+      modal.classList.remove("hidden");
+      modal.setAttribute("aria-hidden", "false");
+      profileGrid.innerHTML = "";
+      modalSubtitle.textContent = "Loading user details...";
+      activeUser = null;
+
+      try {
+        const user = await getFullUser(uid);
+        activeUser = user;
+        updateCachedUser(user);
+        renderProfile(user);
+        renderRows(cache);
+      } catch (error) {
+        console.error("User modal load error:", error);
+        setStatus(error?.message || "Failed to load user profile.", "err");
+        closeUserModal();
+      }
+    }
+
+    function closeUserModal() {
+      modal.classList.add("hidden");
+      modal.setAttribute("aria-hidden", "true");
+      activeUser = null;
+      profileGrid.innerHTML = "";
+    }
+
     function renderRows(users) {
       rows.innerHTML = "";
       if (users.length === 0) {
-        const tr = document.createElement("tr");
-        const td = document.createElement("td");
-        td.colSpan = 5;
-        td.textContent = "No users available.";
-        tr.appendChild(td);
-        rows.appendChild(tr);
+        const empty = document.createElement("p");
+        empty.className = "empty-state";
+        empty.textContent = "No users available.";
+        rows.appendChild(empty);
         return;
       }
 
       users.forEach((user) => {
-        const tr = document.createElement("tr");
-        tr.dataset.uid = user.uid;
+        const row = document.createElement("article");
+        row.className = "user-row";
+        row.dataset.uid = user.uid;
 
-        const uid = document.createElement("td");
-        uid.textContent = user.uid;
-        tr.appendChild(uid);
+        const pill = document.createElement("div");
+        pill.className = "user-pill";
+        pill.innerHTML = `
+          <div>
+            <div class="user-name">${escapeHtml(user.username || user.uid)}</div>
+            <div class="user-meta">${escapeHtml(user.email || user.uid)} | rank: ${escapeHtml(user.rank || "unranked")}</div>
+          </div>
+        `;
 
-        const username = document.createElement("td");
-        username.textContent = user.username || "-";
-        tr.appendChild(username);
+        const actions = document.createElement("div");
+        actions.className = "list-actions";
 
-        const email = document.createElement("td");
-        email.textContent = user.email || "-";
-        tr.appendChild(email);
-
-        const rank = document.createElement("td");
-        rank.textContent = user.rank || "unranked";
-        tr.appendChild(rank);
-
-        const action = document.createElement("td");
-        const wrap = document.createElement("div");
-        wrap.className = "row-actions";
-        const select = createRankSelect(user.rank || "unranked");
-        const save = document.createElement("button");
-        save.type = "button";
-        save.className = "primary";
-        save.textContent = "Save";
-        save.addEventListener("click", async () => {
-          save.disabled = true;
-          try {
-            await updateRankForUid(user.uid, select.value);
-            rank.textContent = select.value;
-            user.rank = select.value;
-            setStatus(`Updated ${user.username || user.uid} to rank ${select.value}.`, "ok");
-          } catch (error) {
-            console.error("Rank update error:", error);
-            setStatus(error?.message || "Failed to update rank.", "err");
-          } finally {
-            save.disabled = false;
-          }
+        const view = document.createElement("button");
+        view.type = "button";
+        view.className = "primary";
+        view.textContent = "View";
+        view.addEventListener("click", () => {
+          openUserModal(user.uid);
         });
-        wrap.appendChild(select);
-        wrap.appendChild(save);
-        action.appendChild(wrap);
-        tr.appendChild(action);
-        rows.appendChild(tr);
+
+        actions.appendChild(view);
+        row.appendChild(pill);
+        row.appendChild(actions);
+        rows.appendChild(row);
       });
     }
 
@@ -446,23 +656,26 @@
       renderRows(cache);
     }
 
+    async function refreshActiveUser() {
+      if (!activeUser?.uid) return;
+      const latest = await getFullUser(activeUser.uid);
+      activeUser = latest;
+      updateCachedUser(latest);
+      renderProfile(latest);
+      renderRows(cache);
+    }
+
     applyRankButton.addEventListener("click", async () => {
-      const identifier = lookupInput.value.trim();
-      if (!identifier) {
-        setStatus("Enter uid, username, or email first.", "err");
+      if (!activeUser?.uid) {
+        setStatus("Open a user profile first.", "err");
         return;
       }
 
       applyRankButton.disabled = true;
       try {
-        const user = await findUser(identifier);
-        if (!user) {
-          setStatus("User not found.", "err");
-          return;
-        }
-        await updateRankForUid(user.uid, targetRank.value);
-        setStatus(`Updated ${user.username || user.uid} to rank ${targetRank.value}.`, "ok");
-        await loadUsers();
+        await updateRankForUid(activeUser.uid, modalRank.value);
+        await refreshActiveUser();
+        setStatus(`Updated ${activeUser.username || activeUser.uid} to rank ${modalRank.value}.`, "ok");
       } catch (error) {
         console.error("Apply rank error:", error);
         setStatus(error?.message || "Failed to apply rank.", "err");
@@ -472,61 +685,120 @@
     });
 
     addLevelBtn.addEventListener("click", async () => {
-      const identifier = lookupInput.value.trim();
-      if (!identifier) return setStatus("Enter user identifier.", "err");
+      if (!activeUser?.uid) return setStatus("Open a user profile first.", "err");
       addLevelBtn.disabled = true;
       try {
-        const user = await findUser(identifier);
-        if (!user) throw new Error("User not found.");
-        const newLevel = Number(user.level || 0) + 1;
-        await updateUserFields(user.uid, { level: newLevel });
-        setStatus(`Increased level for ${user.username || user.uid} to ${newLevel}.`, "ok");
-        await loadUsers();
+        const newLevel = Number(activeUser.level || 0) + 1;
+        await updateUserFields(activeUser.uid, { level: newLevel });
+        await refreshActiveUser();
+        setStatus(`Increased level for ${activeUser.username || activeUser.uid} to ${newLevel}.`, "ok");
       } catch (e) {
-        setStatus(e.message, "err");
+        setStatus(e?.message || "Failed to increase level.", "err");
       } finally {
         addLevelBtn.disabled = false;
       }
     });
 
     removeLevelBtn.addEventListener("click", async () => {
-      const identifier = lookupInput.value.trim();
-      if (!identifier) return setStatus("Enter user identifier.", "err");
+      if (!activeUser?.uid) return setStatus("Open a user profile first.", "err");
       removeLevelBtn.disabled = true;
       try {
-        const user = await findUser(identifier);
-        if (!user) throw new Error("User not found.");
-        const current = Number(user.level || 1);
+        const current = Number(activeUser.level || 1);
         const newLevel = current > 1 ? current - 1 : 1;
         if (current === newLevel) {
           setStatus(`User is already at minimum level.`, "err");
           return;
         }
-        await updateUserFields(user.uid, { level: newLevel });
-        setStatus(`Decreased level for ${user.username || user.uid} to ${newLevel}.`, "ok");
-        await loadUsers();
+        await updateUserFields(activeUser.uid, { level: newLevel });
+        await refreshActiveUser();
+        setStatus(`Decreased level for ${activeUser.username || activeUser.uid} to ${newLevel}.`, "ok");
       } catch (e) {
-        setStatus(e.message, "err");
+        setStatus(e?.message || "Failed to decrease level.", "err");
       } finally {
         removeLevelBtn.disabled = false;
       }
     });
 
     banBtn.addEventListener("click", async () => {
-      const identifier = lookupInput.value.trim();
-      if (!identifier) return setStatus("Enter user identifier.", "err");
+      if (!activeUser?.uid) return setStatus("Open a user profile first.", "err");
       if (!confirm("Are you sure you want to ban this user?")) return;
       banBtn.disabled = true;
       try {
-        const user = await findUser(identifier);
-        if (!user) throw new Error("User not found.");
-        await updateRankForUid(user.uid, "banned");
-        setStatus(`User ${user.username || user.uid} has been banned.`, "ok");
-        await loadUsers();
+        await updateRankForUid(activeUser.uid, "banned");
+        await refreshActiveUser();
+        setStatus(`User ${activeUser.username || activeUser.uid} has been banned.`, "ok");
       } catch (e) {
-        setStatus(e.message, "err");
+        setStatus(e?.message || "Failed to ban user.", "err");
       } finally {
         banBtn.disabled = false;
+      }
+    });
+
+    searchUsersButton.addEventListener("click", async () => {
+      const identifier = lookupInput.value.trim();
+      if (!identifier) {
+        await loadUsers();
+        setStatus("Showing recent users.", "ok");
+        return;
+      }
+
+      searchUsersButton.disabled = true;
+      try {
+        const user = await findUser(identifier);
+        cache = user ? [user] : [];
+        renderRows(cache);
+        setStatus(user ? `Found ${user.username || user.uid}.` : "User not found.", user ? "ok" : "err");
+      } catch (error) {
+        console.error("Search error:", error);
+        setStatus(error?.message || "Failed to search users.", "err");
+      } finally {
+        searchUsersButton.disabled = false;
+      }
+    });
+
+    refreshUsersButton.addEventListener("click", async () => {
+      refreshUsersButton.disabled = true;
+      try {
+        lookupInput.value = "";
+        await loadUsers();
+        setStatus("User list refreshed.", "ok");
+      } catch (error) {
+        setStatus(error?.message || "Failed to refresh users.", "err");
+      } finally {
+        refreshUsersButton.disabled = false;
+      }
+    });
+
+    viewSearchResultButton.addEventListener("click", async () => {
+      const identifier = lookupInput.value.trim();
+      if (!identifier) {
+        setStatus("Enter uid, username, or email first.", "err");
+        return;
+      }
+
+      viewSearchResultButton.disabled = true;
+      try {
+        const user = await findUser(identifier);
+        if (!user) {
+          setStatus("User not found.", "err");
+          return;
+        }
+        cache = [user, ...cache.filter((entry) => entry.uid !== user.uid)];
+        renderRows(cache);
+        await openUserModal(user.uid);
+        setStatus(`Opened ${user.username || user.uid}.`, "ok");
+      } catch (error) {
+        console.error("View search result error:", error);
+        setStatus(error?.message || "Failed to open user profile.", "err");
+      } finally {
+        viewSearchResultButton.disabled = false;
+      }
+    });
+
+    closeModalButton.addEventListener("click", closeUserModal);
+    modal.addEventListener("click", (event) => {
+      if (event.target === modal) {
+        closeUserModal();
       }
     });
 
@@ -536,6 +808,7 @@
         adminMeta.textContent = "Not logged in.";
         tools.classList.add("hidden");
         tableWrap.classList.add("hidden");
+        closeUserModal();
         setStatus("Log in with an admin account to access this page.", "err");
         return;
       }
@@ -553,6 +826,7 @@
         console.error("Admin panel load error:", error);
         tools.classList.add("hidden");
         tableWrap.classList.add("hidden");
+        closeUserModal();
         setStatus(error?.message || "Failed to load admin panel.", "err");
       }
     });

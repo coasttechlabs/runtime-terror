@@ -76,14 +76,14 @@
 
     .frame {
       margin: 52px auto 30px;
-      width: min(1040px, calc(100% - 24px));
+      width: min(1320px, calc(100% - 28px));
       min-height: 600px;
       background: var(--panel);
       border: 2px solid var(--line-soft);
       box-shadow: 0 0 0 1px rgba(28, 255, 122, 0.18), 0 12px 40px rgba(0, 0, 0, 0.42);
       overflow: hidden;
       display: grid;
-      grid-template-columns: 88px 1fr;
+      grid-template-columns: 96px 1fr;
       animation: fade-in 380ms ease-out;
     }
 
@@ -137,7 +137,6 @@
     }
 
     .form-grid {
-      max-width: 720px;
       display: grid;
       gap: 20px;
     }
@@ -231,11 +230,25 @@
     }
 
     .friends {
-      margin-top: 26px;
-      max-width: 720px;
       border: 2px solid var(--line-soft);
       padding: 18px;
       background: rgba(5, 7, 10, 0.32);
+    }
+
+    .tab-panel {
+      display: none;
+    }
+
+    .tab-panel.active {
+      display: block;
+    }
+
+    .placeholder-panel {
+      border: 2px solid var(--line-soft);
+      padding: 18px;
+      background: rgba(5, 7, 10, 0.32);
+      color: var(--muted);
+      min-height: 260px;
     }
 
     .friends h2 {
@@ -258,6 +271,14 @@
       display: flex;
       flex-wrap: wrap;
       gap: 10px;
+    }
+
+    .friend-section-title {
+      margin: 16px 0 10px;
+      color: var(--muted);
+      font-size: 0.86rem;
+      letter-spacing: 1.2px;
+      text-transform: uppercase;
     }
 
     .friend-item {
@@ -416,7 +437,6 @@
       <a href="./index.html#leaderboard">Leaderboard</a>
       <a href="./game-search.html">Game</a>
       <a href="./profile-settings.html">Profile</a>
-      <a href="./admin-panel.html">Admin</a>
       <a href="./login.html">Login</a>
       <a href="./signup.html">Sign Up</a>
     </nav>
@@ -424,85 +444,92 @@
 
   <main class="frame">
     <aside class="side" aria-label="Profile sections">
-      <button class="side-btn active" type="button" aria-label="Profile">
+      <button class="side-btn active" type="button" aria-label="Profile" data-tab="profile">
         <svg viewBox="0 0 24 24" aria-hidden="true">
           <circle cx="12" cy="7.5" r="3.5"></circle>
           <path d="M5 20c0-3.5 3-6 7-6s7 2.5 7 6"></path>
         </svg>
       </button>
-      <button class="side-btn" type="button" aria-label="Favorites">
+      <button class="side-btn" type="button" aria-label="Favorites" data-tab="friends">
         <svg viewBox="0 0 24 24" aria-hidden="true">
           <path d="M12 20s-7-4.4-7-10a4 4 0 0 1 7-2.5A4 4 0 0 1 19 10c0 5.6-7 10-7 10z"></path>
         </svg>
       </button>
-      <button class="side-btn" type="button" aria-label="Bot Upgrades">
-        <svg viewBox="0 0 24 24" aria-hidden="true" stroke="currentColor" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-          <rect x="4" y="4" width="16" height="16" rx="2" ry="2"></rect>
-          <rect x="9" y="9" width="6" height="6"></rect>
-          <line x1="9" y1="1" x2="9" y2="4"></line>
-          <line x1="15" y1="1" x2="15" y2="4"></line>
-          <line x1="9" y1="20" x2="9" y2="23"></line>
-          <line x1="15" y1="20" x2="15" y2="23"></line>
-          <line x1="20" y1="9" x2="23" y2="9"></line>
-          <line x1="20" y1="14" x2="23" y2="14"></line>
-          <line x1="1" y1="9" x2="4" y2="9"></line>
-          <line x1="1" y1="14" x2="4" y2="14"></line>
+      <button class="side-btn" type="button" aria-label="Cloud saves">
+        <svg viewBox="0 0 24 24" aria-hidden="true">
+          <path d="M8 18h9a4 4 0 0 0 .8-7.9A6 6 0 0 0 6.3 8.7 4.5 4.5 0 0 0 8 18z"></path>
+          <path d="M12 16V9"></path>
+          <path d="M9.5 11.5 12 9l2.5 2.5"></path>
         </svg>
       </button>
     </aside>
 
     <section class="content" aria-label="Account settings">
       <h1>Profile Settings</h1>
-      <form class="form-grid">
-        <p class="profile-status" id="profile-status">Log in to edit your profile.</p>
-        <label class="input-wrap">
-          <input id="display-name" type="text" placeholder="Display Name" maxlength="32" />
-        </label>
-        <label class="input-wrap">
-          <input id="email-address" type="email" placeholder="Email Address" />
-        </label>
-        <label class="toggles">
-          <input id="tutorial-completed" type="checkbox" />
-          Tutorial Completed
-        </label>
-        <div class="stats-grid" aria-label="Profile stats">
-          <div class="stat">
-            <div class="stat-label">Rank</div>
-            <div class="stat-value" id="profile-rank">-</div>
-          </div>
-          <div class="stat">
-            <div class="stat-label">Role</div>
-            <div class="stat-value" id="profile-role">-</div>
-          </div>
-          <div class="stat">
-            <div class="stat-label">Level</div>
-            <div class="stat-value" id="profile-level">0</div>
-          </div>
-          <div class="stat">
-            <div class="stat-label">Current Streak</div>
-            <div class="stat-value" id="profile-current-streak">0</div>
-          </div>
-          <div class="stat">
-            <div class="stat-label">Longest Streak</div>
-            <div class="stat-value" id="profile-longest-streak">0</div>
-          </div>
-        </div>
-        <div class="actions">
-          <button id="save-profile-btn" class="action-btn primary" type="button">Save</button>
-          <button id="change-password-btn" class="action-btn" type="button">Change Password</button>
-        </div>
-      </form>
-
-      <section class="friends" aria-label="Add friends">
-        <h2>Add Friends</h2>
-        <p class="friends-status" id="friends-status">Send a friend request by username or email.</p>
-        <div class="friend-add">
+      <section class="tab-panel active" id="panel-profile" aria-label="Profile tab">
+        <form class="form-grid">
+          <p class="profile-status" id="profile-status">Log in to edit your profile.</p>
           <label class="input-wrap">
-            <input id="friend-input" type="text" placeholder="Friend username or email" />
+            <input id="display-name" type="text" placeholder="Display Name" maxlength="32" />
           </label>
-          <button id="add-friend-btn" class="action-btn primary" type="button">Add Friend</button>
-        </div>
-        <div class="friend-list" id="friend-list" aria-label="Pending friend requests"></div>
+          <label class="input-wrap">
+            <input id="email-address" type="email" placeholder="Email Address" />
+          </label>
+          <label class="toggles">
+            <input id="tutorial-completed" type="checkbox" />
+            Tutorial Completed
+          </label>
+          <div class="stats-grid" aria-label="Profile stats">
+            <div class="stat">
+              <div class="stat-label">Rank</div>
+              <div class="stat-value" id="profile-rank">-</div>
+            </div>
+            <div class="stat">
+              <div class="stat-label">Role</div>
+              <div class="stat-value" id="profile-role">-</div>
+            </div>
+            <div class="stat">
+              <div class="stat-label">Level</div>
+              <div class="stat-value" id="profile-level">0</div>
+            </div>
+            <div class="stat">
+              <div class="stat-label">Current Streak</div>
+              <div class="stat-value" id="profile-current-streak">0</div>
+            </div>
+            <div class="stat">
+              <div class="stat-label">Longest Streak</div>
+              <div class="stat-value" id="profile-longest-streak">0</div>
+            </div>
+          </div>
+          <div class="actions">
+            <button id="save-profile-btn" class="action-btn primary" type="button">Save</button>
+            <button id="change-password-btn" class="action-btn" type="button">Change Password</button>
+          </div>
+        </form>
+      </section>
+
+      <section class="tab-panel" id="panel-friends" aria-label="Friends tab">
+        <section class="friends" aria-label="Friends">
+          <h2>Friends</h2>
+          <p class="friends-status" id="friends-status">Send a friend request by username or email.</p>
+          <div class="friend-add">
+            <label class="input-wrap">
+              <input id="friend-input" type="text" placeholder="Friend username or email" />
+            </label>
+            <button id="add-friend-btn" class="action-btn primary" type="button">Add Friend</button>
+          </div>
+          <p class="friend-section-title">Pending Requests</p>
+          <div class="friend-list" id="friend-list" aria-label="Pending friend requests"></div>
+          <p class="friend-section-title">Added Friends</p>
+          <div class="friend-list" id="friend-added-list" aria-label="Added friends"></div>
+        </section>
+      </section>
+
+      <section class="tab-panel" id="panel-cloud" aria-label="Cloud saves tab">
+        <section class="placeholder-panel">
+          <h2>Cloud Saves</h2>
+          <p>Cloud saves tools can live here when ready.</p>
+        </section>
       </section>
     </section>
   </main>
@@ -511,15 +538,15 @@
     import { auth, db } from "./firebase.js";
     import { getApiBase } from "./api-base.js";
     import { onAuthStateChanged, sendPasswordResetEmail, updateProfile } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-auth.js";
-    import { addDoc, collection, doc, getDoc, getDocs, limit, onSnapshot, query, serverTimestamp, updateDoc, where } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore.js";
+    import { doc, getDoc } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore.js";
 
     const USERS_COLLECTION = "users";
-    const FRIEND_REQUESTS_COLLECTION = "friendRequests";
     const API_BASE = getApiBase();
 
     const friendInput = document.getElementById("friend-input");
     const addFriendButton = document.getElementById("add-friend-btn");
     const friendList = document.getElementById("friend-list");
+    const friendAddedList = document.getElementById("friend-added-list");
     const friendsStatus = document.getElementById("friends-status");
     const profileStatus = document.getElementById("profile-status");
     const displayNameInput = document.getElementById("display-name");
@@ -532,15 +559,30 @@
     const levelValue = document.getElementById("profile-level");
     const currentStreakValue = document.getElementById("profile-current-streak");
     const longestStreakValue = document.getElementById("profile-longest-streak");
+    const sideButtons = Array.from(document.querySelectorAll(".side-btn[data-tab]"));
+    const tabPanels = {
+      profile: document.getElementById("panel-profile"),
+      friends: document.getElementById("panel-friends"),
+      cloud: document.getElementById("panel-cloud")
+    };
 
     let currentUser = null;
     let currentProfile = null;
-    let stopOutgoingListener = null;
-    let stopIncomingListener = null;
+    let friendRequestsIntervalId = null;
     let outgoingRequests = [];
     let incomingRequests = [];
     let pendingRenderToken = 0;
     let activeIdToken = "";
+
+    function setActiveTab(tabName) {
+      sideButtons.forEach((btn) => {
+        btn.classList.toggle("active", btn.dataset.tab === tabName);
+      });
+
+      Object.entries(tabPanels).forEach(([name, panel]) => {
+        panel.classList.toggle("active", name === tabName);
+      });
+    }
 
     function setProfileStatus(message, type = "") {
       profileStatus.textContent = message;
@@ -632,49 +674,12 @@
 
     function clearFriendRequestListeners() {
       pendingRenderToken += 1;
-      if (stopOutgoingListener) {
-        stopOutgoingListener();
-        stopOutgoingListener = null;
-      }
-      if (stopIncomingListener) {
-        stopIncomingListener();
-        stopIncomingListener = null;
+      if (friendRequestsIntervalId) {
+        clearInterval(friendRequestsIntervalId);
+        friendRequestsIntervalId = null;
       }
       outgoingRequests = [];
       incomingRequests = [];
-    }
-
-    async function findUserByIdentifier(identifier) {
-      const raw = identifier.trim();
-      if (!raw) return null;
-
-      try {
-        const usernameSnapshot = await getDocs(query(
-          collection(db, USERS_COLLECTION),
-          where("username", "==", raw),
-          limit(1)
-        ));
-        if (!usernameSnapshot.empty) {
-          return { uid: usernameSnapshot.docs[0].id, ...usernameSnapshot.docs[0].data() };
-        }
-
-        const normalizedEmail = raw.toLowerCase();
-        const emailSnapshot = await getDocs(query(
-          collection(db, USERS_COLLECTION),
-          where("email", "==", normalizedEmail),
-          limit(1)
-        ));
-        if (!emailSnapshot.empty) {
-          return { uid: emailSnapshot.docs[0].id, ...emailSnapshot.docs[0].data() };
-        }
-      } catch (error) {
-        if (error?.code === "permission-denied") {
-          // Fallback for strict rulesets: treat input as direct UID.
-          return { uid: raw };
-        }
-        throw error;
-      }
-      return null;
     }
 
     const usernameCache = new Map();
@@ -705,105 +710,123 @@
       const outgoingPending = await Promise.all(
         outgoingSnapshot
           .filter((entry) => entry.status === "pending")
-          .map(async (entry) => chip("Sent: @" + await usernameFor(entry.touserid)))
+          .map(async (entry) => chip("Sent: @" + (entry.toUsername || await usernameFor(entry.touserid))))
       );
 
       if (renderToken !== pendingRenderToken) return;
 
       const incomingPending = incomingSnapshot.filter((entry) => entry.status === "pending");
       const fragment = document.createDocumentFragment();
+      const addedFragment = document.createDocumentFragment();
+      const acceptedByUid = new Map();
+
+      outgoingSnapshot
+        .filter((entry) => entry.status === "accepted" && entry.touserid)
+        .forEach((entry) => {
+          acceptedByUid.set(entry.touserid, entry.toUsername || "");
+        });
+      incomingSnapshot
+        .filter((entry) => entry.status === "accepted" && entry.fromuserid)
+        .forEach((entry) => {
+          acceptedByUid.set(entry.fromuserid, entry.fromUsername || "");
+        });
+
+      const addedFriends = await Promise.all(
+        Array.from(acceptedByUid.entries()).map(async ([uid, hintedName]) => {
+          const name = hintedName || await usernameFor(uid);
+          return chip("@" + name);
+        })
+      );
+
+      if (renderToken !== pendingRenderToken) return;
 
       if (outgoingPending.length === 0 && incomingPending.length === 0) {
         fragment.appendChild(chip("No pending requests"));
-        friendList.replaceChildren(fragment);
-        return;
+      } else {
+        outgoingPending.forEach((item) => fragment.appendChild(item));
+
+        for (const entry of incomingPending) {
+          const item = document.createElement("div");
+          item.className = "friend-item";
+
+          const sender = entry.fromUsername || await usernameFor(entry.fromuserid);
+          if (renderToken !== pendingRenderToken) return;
+          item.appendChild(chip("Incoming: @" + sender));
+
+          const actions = document.createElement("div");
+          actions.className = "friend-actions";
+
+          const accept = document.createElement("button");
+          accept.type = "button";
+          accept.className = "mini-btn accept";
+          accept.textContent = "Accept";
+          accept.addEventListener("click", () => respondToRequest(entry.id, "accepted"));
+
+          const decline = document.createElement("button");
+          decline.type = "button";
+          decline.className = "mini-btn";
+          decline.textContent = "Decline";
+          decline.addEventListener("click", () => respondToRequest(entry.id, "declined"));
+
+          actions.appendChild(accept);
+          actions.appendChild(decline);
+          item.appendChild(actions);
+          fragment.appendChild(item);
+        }
       }
-      outgoingPending.forEach((item) => fragment.appendChild(item));
 
-      for (const entry of incomingPending) {
-        const item = document.createElement("div");
-        item.className = "friend-item";
-
-        const sender = await usernameFor(entry.fromuserid);
-        if (renderToken !== pendingRenderToken) return;
-        item.appendChild(chip("Incoming: @" + sender));
-
-        const actions = document.createElement("div");
-        actions.className = "friend-actions";
-
-        const accept = document.createElement("button");
-        accept.type = "button";
-        accept.className = "mini-btn accept";
-        accept.textContent = "Accept";
-        accept.addEventListener("click", () => respondToRequest(entry.id, "accepted"));
-
-        const decline = document.createElement("button");
-        decline.type = "button";
-        decline.className = "mini-btn";
-        decline.textContent = "Decline";
-        decline.addEventListener("click", () => respondToRequest(entry.id, "declined"));
-
-        actions.appendChild(accept);
-        actions.appendChild(decline);
-        item.appendChild(actions);
-        fragment.appendChild(item);
+      if (addedFriends.length === 0) {
+        addedFragment.appendChild(chip("No friends added yet"));
+      } else {
+        for (const item of addedFriends) {
+          addedFragment.appendChild(item);
+        }
       }
 
       if (renderToken !== pendingRenderToken) return;
       friendList.replaceChildren(fragment);
+      friendAddedList.replaceChildren(addedFragment);
+    }
+
+    async function refreshFriendRequests() {
+      if (!currentUser) return;
+      activeIdToken = await currentUser.getIdToken();
+      const payload = await apiRequest("/friends/requests", { token: activeIdToken });
+      outgoingRequests = Array.isArray(payload?.outgoing) ? payload.outgoing : [];
+      incomingRequests = Array.isArray(payload?.incoming) ? payload.incoming : [];
+      await renderPendingRequests();
     }
 
     function watchFriendRequests() {
       clearFriendRequestListeners();
       if (!currentUser) return;
-
-      const outgoingQuery = query(
-        collection(db, FRIEND_REQUESTS_COLLECTION),
-        where("fromuserid", "==", currentUser.uid)
-      );
-      const incomingQuery = query(
-        collection(db, FRIEND_REQUESTS_COLLECTION),
-        where("touserid", "==", currentUser.uid)
-      );
-
-      stopOutgoingListener = onSnapshot(outgoingQuery, (snapshot) => {
-        outgoingRequests = snapshot.docs.map((entry) => ({ id: entry.id, ...entry.data() }));
-        renderPendingRequests().catch((error) => {
-          console.error("Render outgoing request error:", error);
-          setStatus("Failed to load outgoing requests.", "err");
-        });
-      }, (error) => {
-        if (error?.code === "permission-denied") {
-          friendList.innerHTML = "";
-          friendList.appendChild(chip("Requests hidden by Firestore rules"));
-          return;
-        }
-        console.error("Outgoing request listener error:", error);
+      refreshFriendRequests().catch((error) => {
+        console.error("Friend requests load error:", error);
+        setStatus(error?.message || "Failed to load friend requests.", "err");
       });
-
-      stopIncomingListener = onSnapshot(incomingQuery, (snapshot) => {
-        incomingRequests = snapshot.docs.map((entry) => ({ id: entry.id, ...entry.data() }));
-        renderPendingRequests().catch((error) => {
-          console.error("Render incoming request error:", error);
-          setStatus("Failed to load incoming requests.", "err");
+      friendRequestsIntervalId = setInterval(() => {
+        refreshFriendRequests().catch((error) => {
+          console.error("Friend requests refresh error:", error);
         });
-      }, (error) => {
-        if (error?.code === "permission-denied") {
-          friendList.innerHTML = "";
-          friendList.appendChild(chip("Requests hidden by Firestore rules"));
-          return;
-        }
-        console.error("Incoming request listener error:", error);
-      });
+      }, 10000);
     }
+
+    sideButtons.forEach((btn) => {
+      btn.addEventListener("click", () => {
+        setActiveTab(btn.dataset.tab || "profile");
+      });
+    });
 
     async function respondToRequest(requestId, status) {
       if (!requestId || !currentUser) return;
       try {
-        await updateDoc(doc(db, FRIEND_REQUESTS_COLLECTION, requestId), {
-          status,
-          respondedAt: serverTimestamp()
+        activeIdToken = await currentUser.getIdToken();
+        await apiRequest(`/friends/requests/${encodeURIComponent(requestId)}`, {
+          method: "PATCH",
+          token: activeIdToken,
+          body: { status }
         });
+        await refreshFriendRequests();
         setStatus(
           status === "accepted" ? "Friend request accepted." : "Friend request declined.",
           "ok"
@@ -897,40 +920,15 @@
       }
 
       addFriendButton.disabled = true;
-      setStatus("Checking user...");
+      setStatus("Sending request...");
       try {
-        const target = await findUserByIdentifier(identifier);
-        if (!target) {
-          setStatus("User not found.", "err");
-          return;
-        }
-        if (target.uid === currentUser.uid) {
-          setStatus("You cannot send a request to yourself.", "err");
-          return;
-        }
-        if (outgoingRequests.some((entry) => entry.touserid === target.uid && entry.status === "pending")) {
-          setStatus("You already sent this user a pending request.", "err");
-          return;
-        }
-        if (incomingRequests.some((entry) => entry.fromuserid === target.uid && entry.status === "pending")) {
-          setStatus("This user already sent you a request. Accept it below.", "err");
-          return;
-        }
-        if (
-          outgoingRequests.some((entry) => entry.touserid === target.uid && entry.status === "accepted") ||
-          incomingRequests.some((entry) => entry.fromuserid === target.uid && entry.status === "accepted")
-        ) {
-          setStatus("You are already friends.", "err");
-          return;
-        }
-
-        await addDoc(collection(db, FRIEND_REQUESTS_COLLECTION), {
-          fromuserid: currentUser.uid,
-          touserid: target.uid,
-          status: "pending",
-          createdAt: serverTimestamp()
+        activeIdToken = await currentUser.getIdToken();
+        await apiRequest("/friends/requests", {
+          method: "POST",
+          token: activeIdToken,
+          body: { identifier }
         });
-
+        await refreshFriendRequests();
         friendInput.value = "";
         setStatus("Friend request sent.", "ok");
       } catch (error) {
@@ -962,6 +960,8 @@
         friendInput.disabled = true;
         friendList.innerHTML = "";
         friendList.appendChild(chip("Not logged in"));
+        friendAddedList.innerHTML = "";
+        friendAddedList.appendChild(chip("Not logged in"));
         return;
       }
 

@@ -1,4 +1,5 @@
 import json
+import os
 
 from django.conf import settings
 from django.contrib.auth import get_user_model
@@ -33,10 +34,29 @@ def initialize_firebase():
         except Exception as exc:
             raise exceptions.AuthenticationFailed("Failed to load Firebase credentials JSON") from exc
     elif settings.FIREBASE_CREDENTIALS_KEY:
+        raw_value = str(settings.FIREBASE_CREDENTIALS_KEY).strip()
         try:
-            cred = credentials.Certificate(settings.FIREBASE_CREDENTIALS_KEY)
+            if raw_value.startswith("{"):
+                cred = credentials.Certificate(json.loads(raw_value))
+            else:
+                cred = credentials.Certificate(raw_value)
+        except json.JSONDecodeError as exc:
+            raise exceptions.AuthenticationFailed("FIREBASE_CREDENTIALS_KEY JSON is not valid") from exc
         except Exception as exc:
             raise exceptions.AuthenticationFailed("Failed to load FIREBASE_CREDENTIALS_KEY") from exc
+    else:
+        # Fallback for platforms that provide only GOOGLE_APPLICATION_CREDENTIALS.
+        raw_gac = str(os.getenv("GOOGLE_APPLICATION_CREDENTIALS", "")).strip()
+        if raw_gac:
+            try:
+                if raw_gac.startswith("{"):
+                    cred = credentials.Certificate(json.loads(raw_gac))
+                else:
+                    cred = credentials.Certificate(raw_gac)
+            except json.JSONDecodeError as exc:
+                raise exceptions.AuthenticationFailed("GOOGLE_APPLICATION_CREDENTIALS JSON is not valid") from exc
+            except Exception as exc:
+                raise exceptions.AuthenticationFailed("Failed to load GOOGLE_APPLICATION_CREDENTIALS") from exc
 
     options = {}
     if settings.FIREBASE_PROJECT_ID:

@@ -12,7 +12,7 @@ from .permissions import IsFirebaseAdmin
 
 USERS_COLLECTION = "users"
 FRIEND_REQUESTS_COLLECTION = "friendRequests"
-RANK_OPTIONS = {"player", "unranked", "mod", "admin", "co-owner", "owner"}
+RANK_OPTIONS = {"player", "unranked", "mod", "admin", "co-owner", "owner", "banned"}
 FRIEND_REQUEST_STATUS = {"pending", "accepted", "declined"}
 
 
@@ -338,6 +338,74 @@ class AdminUsersView(APIView):
             hits[entry.id] = _serialize_user(entry)
 
         return Response({"users": list(hits.values())})
+
+
+class AdminUserDetailView(APIView):
+    permission_classes = [IsAuthenticated, IsFirebaseAdmin]
+
+    def get(self, request, uid):
+        users_ref = _users_ref()
+        snapshot = users_ref.document(uid).get()
+        if not snapshot.exists:
+            raise NotFound("User not found.")
+        data = snapshot.to_dict() or {}
+        return Response({"user": _serialize_profile(uid, data.get("email", ""), data)})
+
+    def patch(self, request, uid):
+        payload = request.data if isinstance(request.data, dict) else {}
+        if not payload:
+            raise ValidationError({"detail": "No fields provided."})
+
+        users_ref = _users_ref()
+        target_ref = users_ref.document(uid)
+        current = target_ref.get()
+        if not current.exists:
+            raise NotFound("User not found.")
+
+        updates = {}
+
+        if "level" in payload:
+            try:
+                level = int(payload.get("level"))
+            except (TypeError, ValueError) as exc:
+                raise ValidationError({"level": "Level must be an integer."}) from exc
+            if level < 1:
+                raise ValidationError({"level": "Level must be at least 1."})
+            updates["level"] = level
+
+        if "currentStreak" in payload:
+            try:
+                current_streak = int(payload.get("currentStreak"))
+            except (TypeError, ValueError) as exc:
+                raise ValidationError({"currentStreak": "currentStreak must be an integer."}) from exc
+            if current_streak < 0:
+                raise ValidationError({"currentStreak": "currentStreak must be 0 or greater."})
+            updates["currentStreak"] = current_streak
+
+        if "longestStreak" in payload:
+            try:
+                longest_streak = int(payload.get("longestStreak"))
+            except (TypeError, ValueError) as exc:
+                raise ValidationError({"longestStreak": "longestStreak must be an integer."}) from exc
+            if longest_streak < 0:
+                raise ValidationError({"longestStreak": "longestStreak must be 0 or greater."})
+            updates["longestStreak"] = longest_streak
+
+        if "tutorialCompleted" in payload:
+            tutorial_completed = payload.get("tutorialCompleted")
+            if not isinstance(tutorial_completed, bool):
+                raise ValidationError({"tutorialCompleted": "tutorialCompleted must be true or false."})
+            updates["tutorialCompleted"] = tutorial_completed
+
+        if not updates:
+            raise ValidationError({"detail": "No supported fields provided."})
+
+        updates["updatedAt"] = firestore.SERVER_TIMESTAMP
+        target_ref.set(updates, merge=True)
+
+        updated = target_ref.get()
+        updated_data = updated.to_dict() or {}
+        return Response({"user": _serialize_profile(uid, updated_data.get("email", ""), updated_data)}, status=status.HTTP_200_OK)
 
 
 class AdminUserRankView(APIView):
