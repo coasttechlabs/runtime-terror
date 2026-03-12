@@ -1170,11 +1170,11 @@ function renderArena() {
   const enemyY = enemy.y * (height / 720);
   const playerAmmo = Math.round(cooldownPercent(player) / 10);
 
-  drawHudText(context, player.health, playerAmmo, distanceUnits(playerX, playerY, enemyX, enemyY));
-  drawPlayerBot(context, playerX, playerY, player.health, player.maxHealth, playerAmmo, now, player);
-  drawEnemyBot(context, enemyX, enemyY, enemy.health, enemy.maxHealth, now, enemy);
-  drawShot(context, playerX + 16 * player.facing, playerY - 16, enemyX - 18 * enemy.facing, enemyY - 6, justFired(player), "#2f44ff");
-  drawShot(context, enemyX + 14 * enemy.facing, enemyY - 4, playerX + 12 * player.facing, playerY - 12, justFired(enemy), "#ff4338");
+  drawHudText(glTextCtx, player.health, playerAmmo, distanceUnits(playerX, playerY, enemyX, enemyY));
+  drawPlayerBotGL(playerX, playerY, player.health, player.maxHealth, playerAmmo, now, player);
+  drawEnemyBotGL(enemyX, enemyY, enemy.health, enemy.maxHealth, now, enemy);
+  drawShotGL(playerX + 16 * player.facing, playerY - 16, enemyX - 18 * enemy.facing, enemyY - 6, justFired(player), "#2f44ff");
+  drawShotGL(enemyX + 14 * enemy.facing, enemyY - 4, playerX + 12 * player.facing, playerY - 12, justFired(enemy), "#ff4338");
 }
 
 function drawHudText(context, hp, ammo, dist) {
@@ -1196,17 +1196,14 @@ function drawPlayerBotGL(x, y, health, maxHealth, ammo, now, actor = null) {
   glSetColor("#3948ff");
   glDrawShape(1, x, y, 25, 25, 0);
 
-  context.fillStyle = "#3948ff";
-  context.beginPath();
-  context.arc(0, 0, 25, 0, Math.PI * 2);
-  context.fill();
-
-  context.strokeStyle = "rgba(15, 37, 255, 0.95)";
-  context.lineWidth = 4;
-  context.beginPath();
-  context.moveTo(0, 0);
-  context.lineTo(26 * (actor?.facing || 1), -26);
-  context.stroke();
+  // 3. Cannon
+  glSetColor("#0f25ff", 0.95);
+  const facing = actor?.facing || 1;
+  const angle = facing === 1 ? -Math.PI / 4 : -Math.PI * 0.75;
+  const cannonLen = 37;
+  const cx = x + Math.cos(angle) * (cannonLen / 2);
+  const cy = y + Math.sin(angle) * (cannonLen / 2);
+  glDrawShape(0, cx, cy, cannonLen / 2, 2, angle);
 
   if (actor?.berserkState) {
     glSetColor("#ffd24d");
