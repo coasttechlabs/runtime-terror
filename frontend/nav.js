@@ -35,13 +35,16 @@ function isAdminClaims(claims) {
   if (!claims || typeof claims !== "object") return false;
   if (claims.admin === true) return true;
 
-  if (typeof claims.role === "string" && ["admin", "superadmin"].includes(claims.role.toLowerCase())) {
+  const adminLikeRoles = new Set(["admin", "superadmin", "owner", "co-owner", "coowner"]);
+  const normalizeRole = (role) => String(role).trim().toLowerCase().replace(/[_\s]+/g, "-");
+
+  if (typeof claims.role === "string" && adminLikeRoles.has(normalizeRole(claims.role))) {
     return true;
   }
 
   if (Array.isArray(claims.roles)) {
-    const normalized = claims.roles.map((role) => String(role).toLowerCase());
-    if (normalized.includes("admin") || normalized.includes("superadmin")) {
+    const normalized = claims.roles.map((role) => normalizeRole(role));
+    if (normalized.some((role) => adminLikeRoles.has(role))) {
       return true;
     }
   }
