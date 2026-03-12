@@ -1,4 +1,5 @@
 import { auth } from "./firebase.js";
+import { getApiBase } from "./api-base.js";
 import { onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-auth.js";
 
 const PUBLIC_LINKS = [
@@ -11,6 +12,12 @@ const PRIVATE_LINKS = [
   { href: "./game-search.html", label: "Game" },
   { href: "./profile-settings.html", label: "Profile" }
 ];
+const API_BASE = getApiBase();
+const ADMIN_LIKE_ROLES = new Set(["admin", "superadmin", "owner", "co-owner", "coowner"]);
+
+function normalizeRole(role) {
+  return String(role).trim().toLowerCase().replace(/[_\s]+/g, "-");
+}
 
 function getNavElement() {
   return document.querySelector("header nav, .site-header nav, .site-header .nav, nav.nav");
@@ -35,21 +42,57 @@ function isAdminClaims(claims) {
   if (!claims || typeof claims !== "object") return false;
   if (claims.admin === true) return true;
 
-  const adminLikeRoles = new Set(["admin", "superadmin", "owner", "co-owner", "coowner"]);
-  const normalizeRole = (role) => String(role).trim().toLowerCase().replace(/[_\s]+/g, "-");
-
-  if (typeof claims.role === "string" && adminLikeRoles.has(normalizeRole(claims.role))) {
+  if (typeof claims.role === "string" && ADMIN_LIKE_ROLES.has(normalizeRole(claims.role))) {
     return true;
   }
 
   if (Array.isArray(claims.roles)) {
     const normalized = claims.roles.map((role) => normalizeRole(role));
-    if (normalized.some((role) => adminLikeRoles.has(role))) {
+    if (normalized.some((role) => ADMIN_LIKE_ROLES.has(role))) {
+      return true;
+    }
+  }
+
+  if (typeof claims.rank === "string" && ADMIN_LIKE_ROLES.has(normalizeRole(claims.rank))) {
+    return true;
+  }
+
+  if (Array.isArray(claims.ranks)) {
+    const normalized = claims.ranks.map((role) => normalizeRole(role));
+    if (normalized.some((role) => ADMIN_LIKE_ROLES.has(role))) {
       return true;
     }
   }
 
   return false;
+}
+
+function isAdminProfile(profile) {
+  if (!profile || typeof profile !== "object") return false;
+  const role = typeof profile.role === "string" ? normalizeRole(profile.role) : "";
+  const rank = typeof profile.rank === "string" ? normalizeRole(profile.rank) : "";
+  return ADMIN_LIKE_ROLES.has(role) || ADMIN_LIKE_ROLES.has(rank);
+}
+
+async function isAdminUser(user) {
+  const tokenResult = await user.getIdTokenResult(true);
+  if (isAdminClaims(tokenResult.claims)) {
+    return true;
+  }
+
+  const token = await user.getIdToken();
+  const response = await fetch(`${API_BASE}/profile/me`, {
+    headers: { Authorization: `Bearer ${token}` }
+  });
+  if (!response.ok) return false;
+
+  let payload = null;
+  try {
+    payload = await response.json();
+  } catch (_error) {
+    payload = null;
+  }
+  return isAdminProfile(payload?.profile);
 }
 
 async function getLinksForUser(user) {
@@ -58,8 +101,7 @@ async function getLinksForUser(user) {
     links.push(...PRIVATE_LINKS);
 
     try {
-      const tokenResult = await user.getIdTokenResult();
-      if (isAdminClaims(tokenResult.claims)) {
+      if (await isAdminUser(user)) {
         links.push({ href: "./admin-panel.html", label: "Admin" });
       }
     } catch (error) {
