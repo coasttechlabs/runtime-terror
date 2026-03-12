@@ -136,6 +136,8 @@ const dom = {
   berserkShop: document.querySelector("#berserk-shop"),
   uniqueInventory: document.querySelector("#unique-inventory"),
   botSelect: document.querySelector("#bot-select"),
+  playerIcon: document.querySelector("#player-icon"),
+  enemyIcon: document.querySelector("#enemy-icon"),
   textOverlay: null,
 };
 
@@ -308,7 +310,8 @@ function getPlayerProfile() {
 
 function getEnemyBlueprint() {
   const stage = getProgressionStage(state.encounter);
-  const bot = BOT_TYPES[(state.encounter - 1) % BOT_TYPES.length];
+  // Randomize AI bot selection
+  const bot = BOT_TYPES[Math.floor(Math.random() * BOT_TYPES.length)];
   const moduleLevels = { damage: 0, health: 0, armor: 0, speed: 0 };
   const moduleKeys = Object.keys(moduleLevels);
   const modulePoints = Math.min(32, stage + Math.floor(stage / 2));
@@ -916,6 +919,11 @@ function syncBattleUi() {
   if (!battle) {
     setText(dom.enemyName, "Enemy Bot");
     setText(dom.playerHealthText, `${playerProfile.maxHealth} / ${playerProfile.maxHealth}`);
+    if (dom.playerIcon) {
+      dom.playerIcon.style.display = "none";
+      if (dom.botSelect) dom.playerIcon.src = `compressed-images/${dom.botSelect.value}.png`;
+    }
+    if (dom.enemyIcon) dom.enemyIcon.style.display = "none";
     setText(dom.enemyHealthText, "100 / 100");
     setWidth(dom.playerHealthBar, "100%");
     setWidth(dom.enemyHealthBar, "100%");
@@ -944,6 +952,15 @@ function syncBattleUi() {
   const { player, enemy, enemyBlueprint } = battle;
   setText(dom.enemyName, enemy.name);
   setText(dom.playerHealthText, `${roundNumber(player.health)} / ${roundNumber(player.maxHealth)}`);
+  if (dom.playerIcon) {
+    dom.playerIcon.src = `compressed-images/${player.key}.png`;
+    dom.playerIcon.style.display = "block";
+  }
+  if (dom.enemyIcon) {
+    dom.enemyIcon.src = `compressed-images/${enemy.key}.png`;
+    dom.enemyIcon.style.display = "block";
+  }
+
   setText(dom.enemyHealthText, `${roundNumber(enemy.health)} / ${roundNumber(enemy.maxHealth)}`);
   setWidth(dom.playerHealthBar, `${clamp((player.health / player.maxHealth) * 100, 0, 100)}%`);
   setWidth(dom.enemyHealthBar, `${clamp((enemy.health / enemy.maxHealth) * 100, 0, 100)}%`);
@@ -1362,6 +1379,17 @@ if (dom.startBattle) dom.startBattle.addEventListener("click", startBattle);
 if (dom.resetSave) dom.resetSave.addEventListener("click", resetSave);
 if (dom.fireButton) dom.fireButton.addEventListener("click", handlePlayerFire);
 if (dom.berserkButton) dom.berserkButton.addEventListener("click", handlePlayerBerserk);
+if (dom.botSelect && dom.playerIcon) {
+  dom.botSelect.addEventListener("change", () => {
+    if (!battle) {
+       dom.playerIcon.src = `compressed-images/${dom.botSelect.value}.png`;
+       dom.playerIcon.style.display = "block";
+    }
+  });
+  // Init icon state
+  dom.playerIcon.src = `compressed-images/${dom.botSelect.value}.png`;
+  dom.playerIcon.style.display = "block";
+}
 
 if (dom.arenaCanvas) {
   resizeArenaCanvas();
