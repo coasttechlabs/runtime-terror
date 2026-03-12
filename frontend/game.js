@@ -3,6 +3,7 @@ const TICK_MS = 100;
 const BASE_HEALTH = 100;
 const BASE_PLAYER_DAMAGE = 22;
 const BASE_PLAYER_COOLDOWN = 1.6;
+const BASE_MOVE_SPEED = 180;
 
 const MODULES = [
   { key: "damage", name: "Damage Module", baseBonus: 7.5, format: (value) => `+${value}% damage` },
@@ -186,6 +187,12 @@ let battle = null;
 let lastBattleReport = "";
 let arenaFrame = null;
 let autoAdvanceTimeout = null;
+const inputState = {
+  up: false,
+  down: false,
+  left: false,
+  right: false,
+};
 
 function setText(node, value) {
   if (node) node.textContent = value;
@@ -364,6 +371,10 @@ function createActor(kind, config) {
     sawLoss: 0,
     sawSwings: 0,
     lastVirusCheck: 0,
+    x: config.x || 0,
+    y: config.y || 0,
+    moveSpeed: config.moveSpeed || BASE_MOVE_SPEED,
+    facing: kind === "player" ? 1 : -1,
   };
 }
 
@@ -382,6 +393,9 @@ function startBattle() {
     ...playerProfile,
     berserks: state.berserks,
     attackImpl: playerAttack,
+    x: 220,
+    y: 420,
+    moveSpeed: BASE_MOVE_SPEED * (1 + playerProfile.speedBonus / 100),
   });
   const enemy = createActor("enemy", {
     key: enemyBlueprint.bot.key,
@@ -396,6 +410,9 @@ function startBattle() {
     attackImpl: enemyBlueprint.bot.attack,
     unique6: enemyBlueprint.unique6,
     unique7: enemyBlueprint.unique7,
+    x: 900,
+    y: 420,
+    moveSpeed: BASE_MOVE_SPEED * (1 + enemyBlueprint.speedBonus / 100) * 0.92,
   });
 
   battle = {
@@ -484,6 +501,7 @@ function tickBattle() {
 
   const delta = TICK_MS / 1000;
   const { player, enemy } = battle;
+  stepMovement(player, enemy, delta);
   stepActorTimers(player, enemy, delta);
   stepActorTimers(enemy, player, delta);
 
@@ -546,6 +564,48 @@ function stepActorTimers(actor, opponent, delta) {
       }
     }
   }
+}
+
+function stepMovement(player, enemy, delta) {
+  if (!isDisabled(player)) {
+    const dx = (inputState.right ? 1 : 0) - (inputState.left ? 1 : 0);
+    const dy = (inputState.down ? 1 : 0) - (inputState.up ? 1 : 0);
+    moveActor(player, dx, dy, delta);
+    if (dx !== 0) player.facing = dx > 0 ? 1 : -1;
+  }
+
+  if (!isDisabled(enemy)) {
+    const offsetX = player.x - enemy.x;
+    const offsetY = player.y - enemy.y;
+    const distance = Math.hypot(offsetX, offsetY);
+    let dx = 0;
+    let dy = 0;
+
+    if (distance > 360) {
+      dx = offsetX;
+      dy = offsetY;
+    } else if (distance < 250) {
+      dx = -offsetX;
+      dy = -offsetY;
+    } else {
+      dy = offsetY * 0.6;
+    }
+
+    moveActor(enemy, dx, dy, delta, 0.65);
+    if (Math.abs(dx) > 1) enemy.facing = dx > 0 ? 1 : -1;
+  }
+}
+
+function moveActor(actor, dx, dy, delta, multiplier = 1) {
+  const length = Math.hypot(dx, dy);
+  if (length === 0) return;
+
+  const normalizedX = dx / length;
+  const normalizedY = dy / length;
+  const nextX = actor.x + normalizedX * actor.moveSpeed * multiplier * delta;
+  const nextY = actor.y + normalizedY * actor.moveSpeed * multiplier * delta;
+  actor.x = clamp(nextX, 70, 1210);
+  actor.y = clamp(nextY, 120, 650);
 }
 
 function isDisabled(actor) {
@@ -1104,18 +1164,26 @@ function renderArena() {
 
   const player = battle.player;
   const enemy = battle.enemy;
-  const playerX = width * 0.23;
-  const enemyX = width * 0.7;
-  const playerY = height * 0.58 + Math.sin(now * 2.3) * 2;
-  const enemyY = height * 0.58 + Math.sin(now * 2.1 + 0.7) * 2;
+  const playerX = player.x * (width / 1280);
+  const enemyX = enemy.x * (width / 1280);
+  const playerY = player.y * (height / 720);
+  const enemyY = enemy.y * (height / 720);
   const playerAmmo = Math.round(cooldownPercent(player) / 10);
 
+<<<<<<< HEAD
   drawHudText(glTextCtx, player.health, playerAmmo, distanceUnits(playerX, playerY, enemyX, enemyY));
   drawPlayerBotGL(playerX, playerY, player.health, player.maxHealth, playerAmmo, now, player);
   drawEnemyBotGL(enemyX, enemyY, enemy.health, enemy.maxHealth, now, enemy);
   
   drawShotGL(playerX + 16, playerY - 16, enemyX - 18, enemyY - 6, justFired(player), "#2f44ff");
   drawShotGL(enemyX - 14, enemyY - 4, playerX + 12, playerY - 12, justFired(enemy), "#ff4338");
+=======
+  drawHudText(context, player.health, playerAmmo, distanceUnits(playerX, playerY, enemyX, enemyY));
+  drawPlayerBot(context, playerX, playerY, player.health, player.maxHealth, playerAmmo, now, player);
+  drawEnemyBot(context, enemyX, enemyY, enemy.health, enemy.maxHealth, now, enemy);
+  drawShot(context, playerX + 16 * player.facing, playerY - 16, enemyX - 18 * enemy.facing, enemyY - 6, justFired(player), "#2f44ff");
+  drawShot(context, enemyX + 14 * enemy.facing, enemyY - 4, playerX + 12 * player.facing, playerY - 12, justFired(enemy), "#ff4338");
+>>>>>>> 41ec694bad23bea719b2639c73d7bf3083ca5e39
 }
 
 function drawHudText(context, hp, ammo, dist) {
@@ -1137,6 +1205,7 @@ function drawPlayerBotGL(x, y, health, maxHealth, ammo, now, actor = null) {
   glSetColor("#3948ff");
   glDrawShape(1, x, y, 25, 25, 0);
 
+<<<<<<< HEAD
   // 3. Cannon (Line -> Rotated Rect)
   glSetColor("#0f25ff", 0.95);
   const cannonLen = 35; 
@@ -1145,6 +1214,19 @@ function drawPlayerBotGL(x, y, health, maxHealth, ammo, now, actor = null) {
   const cx = x + Math.cos(angle) * (cannonLen / 2);
   const cy = y + Math.sin(angle) * (cannonLen / 2);
   glDrawShape(0, cx, cy, cannonLen/2, 2, angle);
+=======
+  context.fillStyle = "#3948ff";
+  context.beginPath();
+  context.arc(0, 0, 25, 0, Math.PI * 2);
+  context.fill();
+
+  context.strokeStyle = "rgba(15, 37, 255, 0.95)";
+  context.lineWidth = 4;
+  context.beginPath();
+  context.moveTo(0, 0);
+  context.lineTo(26 * (actor?.facing || 1), -26);
+  context.stroke();
+>>>>>>> 41ec694bad23bea719b2639c73d7bf3083ca5e39
 
   if (actor?.berserkState) {
     glSetColor("#ffd24d");
@@ -1246,6 +1328,13 @@ function resizeArenaCanvas() {
   }
 }
 
+function setInput(eventCode, pressed) {
+  if (eventCode === "KeyW" || eventCode === "ArrowUp") inputState.up = pressed;
+  if (eventCode === "KeyS" || eventCode === "ArrowDown") inputState.down = pressed;
+  if (eventCode === "KeyA" || eventCode === "ArrowLeft") inputState.left = pressed;
+  if (eventCode === "KeyD" || eventCode === "ArrowRight") inputState.right = pressed;
+}
+
 function tickArenaFrame() {
   renderArena();
   arenaFrame = window.requestAnimationFrame(tickArenaFrame);
@@ -1273,15 +1362,32 @@ if (dom.arenaCanvas) {
   dom.arenaCanvas.addEventListener("pointerdown", handlePlayerFire);
   window.addEventListener("resize", resizeArenaCanvas);
   window.addEventListener("keydown", (event) => {
-    if (event.repeat) return;
+    setInput(event.code, true);
     if (event.code === "Space") {
       event.preventDefault();
-      handlePlayerFire();
+      if (!event.repeat) handlePlayerFire();
+      return;
     }
     if (event.code === "ShiftLeft" || event.code === "ShiftRight") {
       event.preventDefault();
-      handlePlayerBerserk();
+      if (!event.repeat) handlePlayerBerserk();
+      return;
     }
+    if (event.code.startsWith("Arrow") || event.code.startsWith("Key")) {
+      event.preventDefault();
+    }
+  });
+  window.addEventListener("keyup", (event) => {
+    setInput(event.code, false);
+    if (event.code.startsWith("Arrow") || event.code.startsWith("Key") || event.code === "Space") {
+      event.preventDefault();
+    }
+  });
+  window.addEventListener("blur", () => {
+    inputState.up = false;
+    inputState.down = false;
+    inputState.left = false;
+    inputState.right = false;
   });
 }
 
