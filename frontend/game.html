@@ -8,15 +8,6 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Special+Elite&family=Share+Tech+Mono&display=swap" rel="stylesheet" />
   <style>
-    :root {
-      --bg: #05090d;
-      --line: #38ff8f;
-      --line-soft: rgba(56, 255, 143, 0.2);
-      --accent: #78c8ff;
-      --danger: #ff6f61;
-      --panel: rgba(6, 11, 15, 0.8);
-    }
-
     * {
       box-sizing: border-box;
     }
@@ -26,124 +17,26 @@
       min-height: 100vh;
       overflow: hidden;
       font-family: "Share Tech Mono", monospace;
-      background:
-        radial-gradient(circle at 18% 16%, rgba(28, 116, 67, 0.28), transparent 24%),
-        radial-gradient(circle at 82% 22%, rgba(39, 85, 143, 0.24), transparent 26%),
-        radial-gradient(circle at 50% 100%, rgba(255, 111, 97, 0.12), transparent 28%),
-        linear-gradient(180deg, #091018 0%, #04070b 100%);
+      background: #000;
       color: white;
     }
 
     .arena-screen {
-      position: relative;
       min-height: 100vh;
-      padding: 16px;
-      display: grid;
-      place-items: center;
     }
 
     .arena-frame {
       position: relative;
-      width: min(100vw - 32px, 1280px);
-      aspect-ratio: 16 / 9;
-      border: 1px solid var(--line-soft);
-      background:
-        linear-gradient(180deg, rgba(7, 13, 19, 0.78), rgba(4, 9, 13, 0.92)),
-        repeating-linear-gradient(90deg, rgba(255, 255, 255, 0.02), rgba(255, 255, 255, 0.02) 1px, transparent 1px, transparent 64px);
-      box-shadow: 0 0 0 1px rgba(56, 255, 143, 0.06), 0 24px 60px rgba(0, 0, 0, 0.55);
+      width: 100vw;
+      height: 100vh;
       overflow: hidden;
-      border-radius: 24px;
     }
 
     .arena-canvas {
       width: 100%;
       height: 100%;
       display: block;
-    }
-
-    .hud {
-      position: absolute;
-      inset: 0;
-      pointer-events: none;
-      display: flex;
-      flex-direction: column;
-      justify-content: space-between;
-      padding: 18px;
-    }
-
-    .hud-top {
-      display: grid;
-      grid-template-columns: 1fr 1fr;
-      gap: 16px;
-    }
-
-    .hud-bar {
-      padding: 10px;
-      border-radius: 999px;
-      background: var(--panel);
-      border: 1px solid rgba(255, 255, 255, 0.08);
-      backdrop-filter: blur(10px);
-    }
-
-    .track {
-      height: 12px;
-      overflow: hidden;
-      border-radius: 999px;
-      background: rgba(255, 255, 255, 0.08);
-    }
-
-    .bar {
-      height: 100%;
-      width: 100%;
-      transition: width 120ms linear;
-    }
-
-    .health-bar {
-      background: linear-gradient(90deg, var(--line), #b6ff63);
-    }
-
-    .enemy-bar {
-      background: linear-gradient(90deg, var(--danger), #ffba70);
-    }
-
-    .hud-bottom {
-      display: flex;
-      justify-content: center;
-    }
-
-    .controls {
-      pointer-events: auto;
-      display: flex;
-      gap: 12px;
-      padding: 10px;
-      border-radius: 999px;
-      background: var(--panel);
-      border: 1px solid rgba(255, 255, 255, 0.08);
-      backdrop-filter: blur(10px);
-    }
-
-    button {
-      width: 58px;
-      height: 58px;
-      border: 1px solid var(--line-soft);
-      border-radius: 50%;
-      background: rgba(255, 255, 255, 0.04);
-      color: white;
-      display: grid;
-      place-items: center;
-      cursor: pointer;
-      transition: transform 120ms ease, background-color 120ms ease, border-color 120ms ease, opacity 120ms ease;
-    }
-
-    button:hover:enabled {
-      transform: translateY(-1px);
-      background: rgba(56, 255, 143, 0.08);
-      border-color: rgba(56, 255, 143, 0.5);
-    }
-
-    button:disabled {
-      opacity: 0.36;
-      cursor: not-allowed;
+      cursor: crosshair;
     }
 
     .support {
@@ -158,75 +51,12 @@
       border: 0;
     }
 
-    @media (max-width: 720px) {
-      .arena-screen {
-        padding: 8px;
-      }
-
-      .arena-frame {
-        width: calc(100vw - 16px);
-        border-radius: 18px;
-      }
-
-      .hud {
-        padding: 10px;
-      }
-
-      .hud-top {
-        gap: 8px;
-      }
-
-      .hud-bar {
-        padding: 8px;
-      }
-
-      .track {
-        height: 10px;
-      }
-
-      .controls {
-        gap: 8px;
-        padding: 8px;
-      }
-
-      button {
-        width: 52px;
-        height: 52px;
-      }
-    }
   </style>
 </head>
 <body>
   <main class="arena-screen">
     <section class="arena-frame" aria-label="Solo arena">
       <canvas id="arena-canvas" class="arena-canvas" width="1280" height="720"></canvas>
-
-      <div class="hud" aria-hidden="true">
-        <div class="hud-top">
-          <div class="hud-bar">
-            <div class="track"><div id="player-health-bar" class="bar health-bar"></div></div>
-          </div>
-          <div class="hud-bar">
-            <div class="track"><div id="enemy-health-bar" class="bar enemy-bar"></div></div>
-          </div>
-        </div>
-
-        <div class="hud-bottom">
-          <div class="controls">
-            <button id="fire-button" type="button" aria-label="Fire">
-              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-                <circle cx="12" cy="12" r="5" stroke="currentColor" stroke-width="1.8"></circle>
-                <path d="M12 2v4M12 18v4M2 12h4M18 12h4" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"></path>
-              </svg>
-            </button>
-            <button id="berserk-button" type="button" aria-label="Berserk">
-              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-                <path d="M13 2L5 14h5l-1 8 8-12h-5l1-8z" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"></path>
-              </svg>
-            </button>
-          </div>
-        </div>
-      </div>
 
       <section class="support" aria-hidden="true">
         <button id="start-battle" type="button">Start</button>
@@ -238,6 +68,8 @@
         <div id="battle-log"></div>
         <div id="player-health-text"></div>
         <div id="enemy-health-text"></div>
+        <div id="player-health-bar"></div>
+        <div id="enemy-health-bar"></div>
         <div id="player-cooldown-bar"></div>
         <div id="enemy-cooldown-bar"></div>
         <div id="player-stats"></div>
@@ -245,6 +77,8 @@
         <div id="player-status"></div>
         <div id="enemy-status"></div>
         <div id="enemy-name"></div>
+        <button id="fire-button" type="button">Fire</button>
+        <button id="berserk-button" type="button">Berserk</button>
         <div id="upgrade-shop"></div>
         <div id="berserk-shop"></div>
         <div id="unique-inventory"></div>

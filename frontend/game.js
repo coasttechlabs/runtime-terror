@@ -969,154 +969,173 @@ function renderArena() {
   const now = performance.now() / 1000;
 
   context.clearRect(0, 0, width, height);
-
-  const background = context.createLinearGradient(0, 0, 0, height);
-  background.addColorStop(0, "#0b1218");
-  background.addColorStop(1, "#05090d");
-  context.fillStyle = background;
+  context.fillStyle = "#000";
   context.fillRect(0, 0, width, height);
 
-  context.strokeStyle = "rgba(255,255,255,0.04)";
-  context.lineWidth = 1;
-  for (let x = 0; x <= width; x += 80) {
-    context.beginPath();
-    context.moveTo(x, 0);
-    context.lineTo(x, height);
-    context.stroke();
-  }
-  for (let y = 0; y <= height; y += 80) {
-    context.beginPath();
-    context.moveTo(0, y);
-    context.lineTo(width, y);
-    context.stroke();
-  }
-
-  context.fillStyle = "rgba(56,255,143,0.08)";
-  context.beginPath();
-  context.ellipse(width / 2, height * 0.52, width * 0.28, height * 0.18, 0, 0, Math.PI * 2);
-  context.fill();
-
   if (!battle) {
-    drawIdleBot(context, width * 0.34, height * 0.54, "#38ff8f", now);
-    drawIdleBot(context, width * 0.66, height * 0.54, "#ff8f76", now + 0.8);
+    const playerX = width * 0.23;
+    const enemyX = width * 0.7;
+    const playerY = height * 0.58;
+    const enemyY = height * 0.58;
+    drawHudText(context, 150, 10, distanceUnits(playerX, playerY, enemyX, enemyY));
+    drawPlayerBot(context, playerX, playerY, 150, 150, 10, now);
+    drawEnemyBot(context, enemyX, enemyY, 200, 200, now);
     return;
   }
 
   const player = battle.player;
   const enemy = battle.enemy;
-  const playerX = width * 0.28;
-  const enemyX = width * 0.72;
-  const playerY = height * 0.58 + Math.sin(now * 2.2) * 8;
-  const enemyY = height * 0.42 + Math.sin(now * 2 + 1.6) * 8;
+  const playerX = width * 0.23;
+  const enemyX = width * 0.7;
+  const playerY = height * 0.58 + Math.sin(now * 2.3) * 2;
+  const enemyY = height * 0.58 + Math.sin(now * 2.1 + 0.7) * 2;
+  const playerAmmo = Math.round(cooldownPercent(player) / 10);
 
-  drawBot(context, {
-    x: playerX,
-    y: playerY,
-    color: "#38ff8f",
-    glow: "rgba(56,255,143,0.35)",
-    cooldown: cooldownPercent(player) / 100,
-    disabled: isDisabled(player),
-    berserk: Boolean(player.berserkState),
-  });
-
-  drawBot(context, {
-    x: enemyX,
-    y: enemyY,
-    color: "#ff7e6d",
-    glow: "rgba(255,126,109,0.35)",
-    cooldown: cooldownPercent(enemy) / 100,
-    disabled: isDisabled(enemy),
-    berserk: Boolean(enemy.berserkState),
-  });
-
-  drawBeam(context, playerX, playerY, enemyX, enemyY, player.cooldownRemaining / Math.max(player.cooldownDuration, 0.01), "#78c8ff");
-  drawBeam(context, enemyX, enemyY, playerX, playerY, enemy.cooldownRemaining / Math.max(enemy.cooldownDuration, 0.01), "#ffba70");
+  drawHudText(context, player.health, playerAmmo, distanceUnits(playerX, playerY, enemyX, enemyY));
+  drawPlayerBot(context, playerX, playerY, player.health, player.maxHealth, playerAmmo, now, player);
+  drawEnemyBot(context, enemyX, enemyY, enemy.health, enemy.maxHealth, now, enemy);
+  drawShot(context, playerX + 16, playerY - 16, enemyX - 18, enemyY - 6, justFired(player), "#2f44ff");
+  drawShot(context, enemyX - 14, enemyY - 4, playerX + 12, playerY - 12, justFired(enemy), "#ff4338");
 }
 
-function drawIdleBot(context, x, y, color, now) {
-  drawBot(context, {
-    x,
-    y,
-    color,
-    glow: color === "#38ff8f" ? "rgba(56,255,143,0.35)" : "rgba(255,126,109,0.35)",
-    cooldown: (Math.sin(now * 2) + 1) / 2,
-    disabled: false,
-    berserk: false,
-  });
+function drawHudText(context, hp, ammo, dist) {
+  context.save();
+  context.fillStyle = "#f5f5f5";
+  context.font = '700 28px "Share Tech Mono", monospace';
+  context.textBaseline = "top";
+  context.fillText(`HP: ${Math.max(0, Math.round(hp))} | AMMO: ${Math.max(0, ammo)} | DIST: ${dist.toFixed(1)}U`, 28, 24);
+  context.restore();
 }
 
-function drawBot(context, config) {
-  const { x, y, color, glow, cooldown, disabled, berserk } = config;
+function drawPlayerBot(context, x, y, health, maxHealth, ammo, now, actor = null) {
   context.save();
   context.translate(x, y);
 
-  context.fillStyle = glow;
-  context.beginPath();
-  context.arc(0, 0, 74, 0, Math.PI * 2);
-  context.fill();
-
-  context.fillStyle = "#111820";
-  context.strokeStyle = color;
-  context.lineWidth = 3;
-  context.beginPath();
-  context.roundRect(-44, -30, 88, 60, 20);
-  context.fill();
-  context.stroke();
-
-  context.strokeStyle = "rgba(255,255,255,0.16)";
-  context.beginPath();
-  context.moveTo(-18, -30);
-  context.lineTo(-32, -58);
-  context.moveTo(18, -30);
-  context.lineTo(32, -58);
-  context.moveTo(-26, 30);
-  context.lineTo(-34, 54);
-  context.moveTo(26, 30);
-  context.lineTo(34, 54);
-  context.stroke();
-
-  context.fillStyle = color;
-  context.beginPath();
-  context.arc(0, -4, 12, 0, Math.PI * 2);
-  context.fill();
-
-  context.strokeStyle = "rgba(255,255,255,0.2)";
+  context.strokeStyle = "#0f25ff";
   context.lineWidth = 6;
   context.beginPath();
-  context.arc(0, 0, 58, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * cooldown);
+  context.arc(0, 0, 40, 0, Math.PI * 2);
   context.stroke();
 
-  if (berserk) {
-    context.strokeStyle = "rgba(255, 209, 102, 0.95)";
+  context.fillStyle = "#3948ff";
+  context.beginPath();
+  context.arc(0, 0, 25, 0, Math.PI * 2);
+  context.fill();
+
+  context.strokeStyle = "rgba(15, 37, 255, 0.95)";
+  context.lineWidth = 4;
+  context.beginPath();
+  context.moveTo(0, 0);
+  context.lineTo(26, -26);
+  context.stroke();
+
+  if (actor?.berserkState) {
+    context.strokeStyle = "#ffd24d";
     context.lineWidth = 3;
     context.beginPath();
-    context.arc(0, 0, 68, 0, Math.PI * 2);
+    context.arc(0, 0, 50 + Math.sin(now * 16) * 2, 0, Math.PI * 2);
     context.stroke();
   }
 
-  if (disabled) {
-    context.strokeStyle = "rgba(120, 200, 255, 0.85)";
-    context.setLineDash([8, 8]);
+  if (actor && isDisabled(actor)) {
+    context.strokeStyle = "#8fd3ff";
+    context.setLineDash([6, 6]);
+    context.lineWidth = 2;
     context.beginPath();
-    context.arc(0, 0, 82, 0, Math.PI * 2);
+    context.arc(0, 0, 56, 0, Math.PI * 2);
     context.stroke();
     context.setLineDash([]);
   }
 
   context.restore();
+  drawHealthBar(context, x - 30, y - 48, 60, health, maxHealth);
+
+  context.save();
+  context.fillStyle = "#ff2b2b";
+  context.font = '700 18px "Share Tech Mono", monospace';
+  context.fillText(`${Math.max(0, ammo)}`, x + 10, y - 24);
+  context.restore();
 }
 
-function drawBeam(context, fromX, fromY, toX, toY, remainingRatio, color) {
-  if (remainingRatio > 0.18) return;
+function drawEnemyBot(context, x, y, health, maxHealth, now, actor = null) {
+  context.save();
+  context.translate(x, y);
+
+  context.fillStyle = "#ff3a2f";
+  context.beginPath();
+  context.arc(0, 0, 24, 0, Math.PI * 2);
+  context.fill();
+
+  if (actor?.berserkState) {
+    context.strokeStyle = "#ffd24d";
+    context.lineWidth = 3;
+    context.beginPath();
+    context.arc(0, 0, 36 + Math.sin(now * 16) * 2, 0, Math.PI * 2);
+    context.stroke();
+  }
+
+  if (actor && isDisabled(actor)) {
+    context.strokeStyle = "#8fd3ff";
+    context.setLineDash([6, 6]);
+    context.lineWidth = 2;
+    context.beginPath();
+    context.arc(0, 0, 42, 0, Math.PI * 2);
+    context.stroke();
+    context.setLineDash([]);
+  }
+
+  context.restore();
+  drawHealthBar(context, x - 30, y - 48, 60, health, maxHealth);
+
+  context.save();
+  context.fillStyle = "#f5f5f5";
+  context.font = '700 18px "Share Tech Mono", monospace';
+  context.fillText(`${Math.max(0, Math.round(health))}`, x + 38, y - 40);
+  context.restore();
+}
+
+function drawHealthBar(context, x, y, width, health, maxHealth) {
+  context.save();
+  context.fillStyle = "#114400";
+  context.fillRect(x, y, width, 8);
+  context.fillStyle = "#00ff1a";
+  context.fillRect(x, y, width * clamp(health / Math.max(maxHealth, 1), 0, 1), 8);
+  context.restore();
+}
+
+function drawShot(context, fromX, fromY, toX, toY, active, color) {
+  if (!active) return;
   context.save();
   context.strokeStyle = color;
-  context.lineWidth = 3;
-  context.globalAlpha = clamp(0.28 - remainingRatio, 0, 0.28) * 3.4;
+  context.lineWidth = 2;
   context.beginPath();
   context.moveTo(fromX, fromY);
   context.lineTo(toX, toY);
   context.stroke();
   context.restore();
+}
+
+function justFired(actor) {
+  if (!actor) return false;
+  const duration = Math.max(actor.cooldownDuration, 0.01);
+  return actor.cooldownRemaining >= duration - 0.14;
+}
+
+function distanceUnits(fromX, fromY, toX, toY) {
+  return Math.hypot(toX - fromX, toY - fromY) / 6.65;
+}
+
+function resizeArenaCanvas() {
+  if (!dom.arenaCanvas) return;
+  const ratio = window.devicePixelRatio || 1;
+  const bounds = dom.arenaCanvas.getBoundingClientRect();
+  const nextWidth = Math.max(1, Math.round(bounds.width * ratio));
+  const nextHeight = Math.max(1, Math.round(bounds.height * ratio));
+
+  if (dom.arenaCanvas.width !== nextWidth || dom.arenaCanvas.height !== nextHeight) {
+    dom.arenaCanvas.width = nextWidth;
+    dom.arenaCanvas.height = nextHeight;
+  }
 }
 
 function tickArenaFrame() {
@@ -1138,10 +1157,13 @@ if (dom.fireButton) dom.fireButton.addEventListener("click", handlePlayerFire);
 if (dom.berserkButton) dom.berserkButton.addEventListener("click", handlePlayerBerserk);
 
 if (dom.arenaCanvas) {
+  resizeArenaCanvas();
   if (!arenaFrame) {
     arenaFrame = window.requestAnimationFrame(tickArenaFrame);
   }
 
+  dom.arenaCanvas.addEventListener("pointerdown", handlePlayerFire);
+  window.addEventListener("resize", resizeArenaCanvas);
   window.addEventListener("keydown", (event) => {
     if (event.repeat) return;
     if (event.code === "Space") {
