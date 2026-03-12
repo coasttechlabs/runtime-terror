@@ -287,7 +287,7 @@
     import { collection, doc, getDoc, getDocs, limit, query, serverTimestamp, updateDoc, where } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore.js";
 
     const USERS_COLLECTION = "users";
-    const ADMIN_RANKS = new Set(["admin", "co-owner", "owner"]);
+    const ADMIN_RANKS = new Set(["mod", "admin", "co-owner", "owner"]);
     const RANK_OPTIONS = ["player", "unranked", "mod", "admin", "Co-Owner", "owner"];
     const API_BASE = getApiBase();
 
