@@ -1419,7 +1419,7 @@ if (dom.arenaCanvas) {
   window.addEventListener("resize", resizeArenaCanvas);
   window.addEventListener("keydown", (event) => {
     setInput(event.code, true);
-    if (event.code === "Space") {
+    if (event.code === "Space" || event.code === "KeyQ") {
       event.preventDefault();
       if (!event.repeat) handlePlayerAbility();
       return;
@@ -1430,7 +1430,7 @@ if (dom.arenaCanvas) {
   });
   window.addEventListener("keyup", (event) => {
     setInput(event.code, false);
-    if (event.code.startsWith("Arrow") || event.code.startsWith("Key") || event.code === "Space") {
+    if (event.code.startsWith("Arrow") || event.code.startsWith("Key") || event.code === "Space" || event.code === "KeyQ") {
       event.preventDefault();
     }
   });

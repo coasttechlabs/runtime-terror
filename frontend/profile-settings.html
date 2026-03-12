@@ -926,26 +926,76 @@
         tier: 2,
         name: "Elemental Module Tier 2",
         description: "-10% health.<br>+10% Elemental Damage.",
+        cost: 190,
       },
       {
         key: "freeze",
         tier: 4,
         name: "Freeze Module Tier 4",
         description: "Freeze enemy for 5s (no move/shoot).<br>Self-inflicts 40 damage on use.",
+        cost: 420,
       },
       {
         key: "striker",
         tier: 6,
         name: "Striker Module Tier 6",
         description: "3x Fire Rate for 5s.<br>+30% Damage Taken while active.",
+        cost: 760,
       },
       {
         key: "golden",
         tier: 7,
         name: "Golden Module Tier 7",
         description: "90% Deflection Chance.<br>40% Reflect Chance (0.5x dmg).<br>-40% Movement Speed.<br>-30% Fire Rate.<br>Lasts 7 seconds.",
+        cost: 980,
       }
     ];
+
+    // --- State & Cost Logic ---
+
+    function loadLocalState() {
+      try {
+        const raw = localStorage.getItem(STORAGE_KEY);
+        if (!raw) return { money: 0, modules: { damage: 0, health: 0, armor: 0, speed: 0 }, berserks: [] };
+        const data = JSON.parse(raw);
+        if (!data.modules) data.modules = { damage: 0, health: 0, armor: 0, speed: 0 };
+        if (!data.berserks) data.berserks = [];
+        if (typeof data.money !== 'number') data.money = 0;
+        return data;
+      } catch (e) {
+        return { money: 0, modules: { damage: 0, health: 0, armor: 0, speed: 0 }, berserks: [] };
+      }
+    }
+
+    function saveLocalState(state) {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+      if (moneyValue) moneyValue.textContent = `$${state.money}`;
+      renderUpgrades();
+    }
+
+    function getTierFromLevel(level) {
+      return level > 0 ? Math.ceil(level / 2) : 0;
+    }
+
+    function isPlusLevel(level) {
+      return level > 0 && level % 2 === 0;
+    }
+
+    function formatModuleTier(level) {
+      if (level <= 0) return "Tier 0";
+      const tier = getTierFromLevel(level);
+      return `Tier ${tier}${isPlusLevel(level) ? "+" : ""}`;
+    }
+
+    function getModuleUpgradeCost(nextLevel) {
+      if (nextLevel <= 1) return 650;
+      let cost = 650;
+      for (let l = 2; l <= nextLevel; l++) {
+        if (isPlusLevel(l)) cost *= 1.5;
+        else cost *= 2.5;
+      }
+      return Math.floor(cost);
+    }
 
     function calculateStat(base, tier, isPlus) {
       const doubled = base * Math.pow(2, tier - 1);
@@ -959,16 +1009,39 @@
       
       if (!coreContainer || !berserkContainer) return;
       
+      const state = loadLocalState();
+
       coreContainer.innerHTML = "";
       berserkContainer.innerHTML = "";
 
       STAT_MODULES.forEach(mod => {
-        const valT1 = calculateStat(mod.base, 1, false);
-        const valT1Plus = calculateStat(mod.base, 1, true);
+        const currentLevel = state.modules[mod.key] || 0;
+        const nextLevel = currentLevel + 1;
+        const exhausted = currentLevel >= 14;
+        const cost = getModuleUpgradeCost(nextLevel);
+        const canAfford = state.money >= cost;
+
+        // Calculate stats for display
+        const curTier = getTierFromLevel(currentLevel);
+        const curPlus = isPlusLevel(currentLevel);
+        const curVal = currentLevel > 0 ? calculateStat(mod.base, curTier, curPlus) : 0;
+        
+        const nextTier = getTierFromLevel(nextLevel);
+        const nextPlus = isPlusLevel(nextLevel);
+        const nextVal = calculateStat(mod.base, nextTier, nextPlus);
+
         const sign = mod.inverse ? '-' : '+';
         
         const card = document.createElement('div');
         card.className = 'upgrade-card';
+
+        let buttonHtml = "";
+        if (exhausted) {
+          buttonHtml = `<button class="action-btn" disabled>Maxed</button>`;
+        } else {
+          buttonHtml = `<button class="action-btn ${canAfford ? 'primary' : ''}" ${canAfford ? '' : 'disabled'}>Buy ${formatModuleTier(nextLevel)} ($${cost})</button>`;
+        }
+
         card.innerHTML = `
           <div class="upgrade-card-header">
             <img src="compressed-images/${mod.key}.png" alt="${mod.name}" class="upgrade-icon" onerror="this.style.display='none'">
@@ -976,22 +1049,54 @@
           </div>
           <div class="upgrade-body">
             <div class="upgrade-stat-row">
-              <span class="upgrade-stat-label">Tier 1</span>
-              <span class="upgrade-stat-value">${sign}${valT1}${mod.unit}</span>
+              <span class="upgrade-stat-label">Current (${formatModuleTier(currentLevel)})</span>
+              <span class="upgrade-stat-value">${currentLevel > 0 ? sign + curVal + mod.unit : "None"}</span>
             </div>
+            ${!exhausted ? `
             <div class="upgrade-stat-row">
-              <span class="upgrade-stat-label">Tier 1+</span>
-              <span class="upgrade-stat-value plus">${sign}${valT1Plus}${mod.unit}</span>
+              <span class="upgrade-stat-label">Next (${formatModuleTier(nextLevel)})</span>
+              <span class="upgrade-stat-value plus">${sign}${nextVal}${mod.unit}</span>
             </div>
+            ` : '<div class="upgrade-stat-row"><span class="upgrade-stat-label">Status</span><span class="upgrade-stat-value plus">MAX LEVEL</span></div>'}
             <div class="upgrade-desc">Upgrades double stats per tier. (+) variants add 2.5%.</div>
+            <div style="margin-top: 12px; display: grid;">
+              ${buttonHtml}
+            </div>
           </div>
         `;
+
+        if (!exhausted) {
+          const btn = card.querySelector('button');
+          if (btn) {
+            btn.addEventListener('click', () => {
+              if (state.money >= cost) {
+                state.money -= cost;
+                state.modules[mod.key] = nextLevel;
+                saveLocalState(state);
+              }
+            });
+          }
+        }
+
         coreContainer.appendChild(card);
       });
 
+      // Determine highest owned tier for Berserk unlocking
+      const highestOwned = Math.max(...Object.values(state.modules).map(l => getTierFromLevel(l)), 0);
+
       BERSERKS.forEach(mod => {
+        const owned = state.berserks.includes(mod.key);
+        const unlocked = highestOwned >= mod.tier;
+        const cost = mod.cost || 9999;
+        const canAfford = state.money >= cost;
+
         const card = document.createElement('div');
         card.className = 'upgrade-card berserk-card';
+
+        let buttonLabel = owned ? "Installed" : unlocked ? `Buy ($${cost})` : `Locked (Need Tier ${mod.tier})`;
+        let btnClass = owned ? "action-btn" : (unlocked && canAfford) ? "action-btn primary" : "action-btn";
+        let disabled = owned || !unlocked || !canAfford;
+
         card.innerHTML = `
           <div class="upgrade-card-header">
             <img src="compressed-images/${mod.key}.png" alt="${mod.name}" class="upgrade-icon" onerror="this.style.display='none'">
@@ -1003,8 +1108,25 @@
               <span class="upgrade-stat-value">Tier ${mod.tier}</span>
             </div>
             <div class="upgrade-desc">${mod.description}</div>
+            <div style="margin-top: 12px; display: grid;">
+              <button class="${btnClass}" ${disabled ? "disabled" : ""}>${buttonLabel}</button>
+            </div>
           </div>
         `;
+
+        if (!owned && unlocked) {
+          const btn = card.querySelector('button');
+          if (btn) {
+            btn.addEventListener('click', () => {
+              if (state.money >= cost) {
+                state.money -= cost;
+                state.berserks.push(mod.key);
+                saveLocalState(state);
+              }
+            });
+          }
+        }
+
         berserkContainer.appendChild(card);
       });
     }
