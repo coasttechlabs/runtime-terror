@@ -1,6 +1,6 @@
 const STORAGE_KEY = "runtime-terror-solo-save-v1";
 const TICK_MS = 16;
-const BASE_HEALTH = 100;
+const BASE_HEALTH = 150;
 const BASE_MOVE_SPEED = 180;
 
 const MODULES = [
@@ -703,13 +703,18 @@ function acidAttack(attacker, defender) {
 }
 
 function sawbladeAttack(attacker, defender) {
+  const dist = distanceUnits(attacker.x, attacker.y, defender.x, defender.y);
+  if (dist > 30) return;
+
   // Starts at 45, -5 every hit
   const degradation = 5;
   const lossStep = attacker.unique7 ? (attacker.sawSwings > 0 && attacker.sawSwings % 3 === 0 ? degradation : 0) : degradation;
+  
   attacker.sawSwings += 1;
   attacker.sawLoss += lossStep;
+  
   const base = attacker.shotDamage - attacker.sawLoss - (attacker.unique7 ? 7 : 0);
-  applyDamage(defender, Math.max(8, base), "saw swing", attacker.name);
+  applyDamage(defender, Math.max(8, base), "saw swing", attacker.name, { projectile: false });
 }
 
 // This is now the Ability for the Hacker bot, not primary fire
@@ -1108,8 +1113,8 @@ function renderArena() {
   drawHudText(context, player.health, distanceUnits(playerX, playerY, enemyX, enemyY));
   drawBot(context, playerX, playerY, player.health, player.maxHealth, "#0000FF", now, player);
   drawBot(context, enemyX, enemyY, enemy.health, enemy.maxHealth, "#FF0000", now, enemy);
-  drawShot(context, playerX + 16 * player.facing, playerY - 16, enemyX - 18 * enemy.facing, enemyY - 6, justFired(player), "#2f44ff");
-  drawShot(context, enemyX + 14 * enemy.facing, enemyY - 4, playerX + 12 * player.facing, playerY - 12, justFired(enemy), "#ff4338");
+  drawShot(context, playerX + 16 * player.facing, playerY - 16, enemyX - 18 * enemy.facing, enemyY - 6, justFired(player) && player.key !== "sawblade", "#2f44ff");
+  drawShot(context, enemyX + 14 * enemy.facing, enemyY - 4, playerX + 12 * player.facing, playerY - 12, justFired(enemy) && enemy.key !== "sawblade", "#ff4338");
 }
 
 function drawHudText(context, hp, dist) {
@@ -1200,7 +1205,7 @@ function justFired(actor) {
 }
 
 function distanceUnits(fromX, fromY, toX, toY) {
-  return Math.hypot(toX - fromX, toY - fromY) / 6.65;
+  return Math.hypot(toX - fromX, toY - fromY) / 12.8;
 }
 
 function resizeArenaCanvas() {
