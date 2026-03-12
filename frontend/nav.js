@@ -1,6 +1,7 @@
-import { auth } from "./firebase.js";
+import { auth, db } from "./firebase.js";
 import { getApiBase } from "./api-base.js";
 import { onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-auth.js";
+import { doc, getDoc } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore.js";
 
 const PUBLIC_LINKS = [
   { href: "./index.html", label: "Home" },
@@ -13,6 +14,7 @@ const PRIVATE_LINKS = [
   { href: "./profile-settings.html", label: "Profile" }
 ];
 const API_BASE = getApiBase();
+const USERS_COLLECTION = "users";
 const ADMIN_LIKE_ROLES = new Set(["admin", "superadmin", "owner", "co-owner", "coowner"]);
 
 function normalizeRole(role) {
@@ -80,19 +82,36 @@ async function isAdminUser(user) {
     return true;
   }
 
-  const token = await user.getIdToken();
-  const response = await fetch(`${API_BASE}/profile/me`, {
-    headers: { Authorization: `Bearer ${token}` }
-  });
-  if (!response.ok) return false;
-
-  let payload = null;
   try {
-    payload = await response.json();
+    const token = await user.getIdToken();
+    const response = await fetch(`${API_BASE}/profile/me`, {
+      headers: { Authorization: `Bearer ${token}` }
+    });
+    if (response.ok) {
+      let payload = null;
+      try {
+        payload = await response.json();
+      } catch (_error) {
+        payload = null;
+      }
+      if (isAdminProfile(payload?.profile)) {
+        return true;
+      }
+    }
   } catch (_error) {
-    payload = null;
+    // Fall through to Firestore check.
   }
-  return isAdminProfile(payload?.profile);
+
+  try {
+    const snapshot = await getDoc(doc(db, USERS_COLLECTION, user.uid));
+    if (snapshot.exists() && isAdminProfile(snapshot.data())) {
+      return true;
+    }
+  } catch (_error) {
+    // Ignore read issues and return false below.
+  }
+
+  return false;
 }
 
 async function getLinksForUser(user) {
