@@ -1,5 +1,5 @@
 const STORAGE_KEY = "runtime-terror-solo-save-v1";
-const TICK_MS = 100;
+const TICK_MS = 16;
 const BASE_HEALTH = 100;
 const BASE_PLAYER_DAMAGE = 22;
 const BASE_PLAYER_COOLDOWN = 1.6;
@@ -143,6 +143,7 @@ let gl = null;
 let glProgram = null;
 let glTextCtx = null;
 let glBuffer = null;
+let glLocs = null;
 
 const VS_SRC = `
 attribute vec2 a_pos;
@@ -414,10 +415,13 @@ function startBattle() {
     y: 420,
     moveSpeed: BASE_MOVE_SPEED * (1 + enemyBlueprint.speedBonus / 100) * 0.92,
   });
+  // Delay enemy first shot by 1 second
+  enemy.cooldownRemaining = 1.0;
 
   battle = {
     startedAt: Date.now(),
     logLines: [],
+    lastLogLength: 0,
     player,
     enemy,
     enemyBlueprint,
@@ -950,8 +954,11 @@ function syncBattleUi() {
     Boolean(player.berserkState)
   );
   setDisabled(dom.startBattle, true);
-  setText(dom.battleLog, battle.logLines.join("\n"));
-  if (dom.battleLog) dom.battleLog.scrollTop = dom.battleLog.scrollHeight;
+  if (battle.logLines.length !== battle.lastLogLength) {
+    setText(dom.battleLog, battle.logLines.join("\n"));
+    if (dom.battleLog) dom.battleLog.scrollTop = dom.battleLog.scrollHeight;
+    battle.lastLogLength = battle.logLines.length;
+  }
   renderArena();
 }
 
@@ -1093,6 +1100,17 @@ function initWebGL() {
   gl.linkProgram(glProgram);
   gl.useProgram(glProgram);
 
+  // Cache Uniforms to reduce lag
+  glLocs = {
+    res: gl.getUniformLocation(glProgram, "u_res"),
+    trans: gl.getUniformLocation(glProgram, "u_trans"),
+    scale: gl.getUniformLocation(glProgram, "u_scale"),
+    rot: gl.getUniformLocation(glProgram, "u_rot"),
+    type: gl.getUniformLocation(glProgram, "u_type"),
+    param: gl.getUniformLocation(glProgram, "u_param"),
+    color: gl.getUniformLocation(glProgram, "u_color"),
+  };
+
   // Quad Buffer
   glBuffer = gl.createBuffer();
   gl.bindBuffer(gl.ARRAY_BUFFER, glBuffer);
@@ -1118,15 +1136,15 @@ function hexToRgba(hex, alpha = 1.0) {
 
 function glSetColor(hex, alpha = 1.0) {
   const [r, g, b, a] = hexToRgba(hex, alpha);
-  gl.uniform4f(gl.getUniformLocation(glProgram, "u_color"), r/255, g/255, b/255, a/255);
+  gl.uniform4f(glLocs.color, r/255, g/255, b/255, a/255);
 }
 
 function glDrawShape(type, x, y, scaleX, scaleY, rotation, param = 0) {
-  gl.uniform2f(gl.getUniformLocation(glProgram, "u_trans"), x, y);
-  gl.uniform2f(gl.getUniformLocation(glProgram, "u_scale"), scaleX, scaleY);
-  gl.uniform1f(gl.getUniformLocation(glProgram, "u_rot"), rotation);
-  gl.uniform1i(gl.getUniformLocation(glProgram, "u_type"), type);
-  gl.uniform1f(gl.getUniformLocation(glProgram, "u_param"), param);
+  gl.uniform2f(glLocs.trans, x, y);
+  gl.uniform2f(glLocs.scale, scaleX, scaleY);
+  gl.uniform1f(glLocs.rot, rotation);
+  gl.uniform1i(glLocs.type, type);
+  gl.uniform1f(glLocs.param, param);
   gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
 }
 
@@ -1141,7 +1159,7 @@ function renderArena() {
 
   // Update Resolution
   gl.viewport(0, 0, width, height);
-  gl.uniform2f(gl.getUniformLocation(glProgram, "u_res"), width, height);
+  gl.uniform2f(glLocs.res, width, height);
 
   // Clear WebGL
   gl.clearColor(0, 0, 0, 1);
