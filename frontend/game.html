@@ -128,7 +128,9 @@
     .log,
     .upgrade,
     .berserk,
-    .inventory-item {
+    .inventory-item,
+    .visual-stage,
+    .controls-box {
       background: var(--panel-strong);
       border: 1px solid rgba(255, 255, 255, 0.08);
     }
@@ -195,6 +197,39 @@
       grid-template-columns: 1fr 1fr;
       gap: 14px;
       margin-top: 16px;
+    }
+
+    .visual-stage {
+      margin-top: 16px;
+      padding: 12px;
+    }
+
+    .arena-canvas {
+      width: 100%;
+      aspect-ratio: 16 / 9;
+      display: block;
+      background:
+        radial-gradient(circle at center, rgba(34, 84, 56, 0.14), transparent 38%),
+        linear-gradient(180deg, #0d1319 0%, #081015 100%);
+      border: 1px solid rgba(50, 255, 139, 0.18);
+    }
+
+    .controls-box {
+      margin-top: 12px;
+      padding: 12px;
+    }
+
+    .controls-box h4 {
+      margin-bottom: 10px;
+      color: var(--accent);
+    }
+
+    .control-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 8px;
+      color: var(--muted);
+      font-size: 0.92rem;
     }
 
     .fighter-card {
@@ -366,6 +401,18 @@
 
       <section class="panel">
         <h3>Battlefield</h3>
+        <div class="visual-stage">
+          <canvas id="arena-canvas" class="arena-canvas" width="960" height="540"></canvas>
+          <div class="controls-box">
+            <h4>Keyboard Controls</h4>
+            <div class="control-grid">
+              <div><strong>Move:</strong> WASD or arrow keys</div>
+              <div><strong>Fire:</strong> Space</div>
+              <div><strong>Berserk:</strong> Shift</div>
+              <div><strong>Play:</strong> dodge, reposition, and shoot</div>
+            </div>
+          </div>
+        </div>
         <div class="arena">
           <article class="fighter-card">
             <div class="fighter-top">
@@ -391,8 +438,8 @@
         </div>
 
         <div class="action-row" style="margin-top: 14px;">
-          <button id="fire-button" class="primary" type="button" disabled>Fire Cannon</button>
-          <button id="berserk-button" type="button" disabled>Activate Berserk</button>
+          <button id="fire-button" class="primary" type="button" disabled>Space: Fire Cannon</button>
+          <button id="berserk-button" type="button" disabled>Shift: Activate Berserk</button>
         </div>
 
         <h4 style="margin: 16px 0 8px;">Combat Log</h4>
