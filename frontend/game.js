@@ -1,8 +1,6 @@
 const STORAGE_KEY = "runtime-terror-solo-save-v1";
-const TICK_MS = 100;
+const TICK_MS = 16;
 const BASE_HEALTH = 100;
-const BASE_PLAYER_DAMAGE = 22;
-const BASE_PLAYER_COOLDOWN = 1.6;
 const BASE_MOVE_SPEED = 180;
 
 const MODULES = [
@@ -19,31 +17,90 @@ const BERSERKS = [
     name: "Elemental Module Tier 2",
     description: "-10% health. +10% elemental damage.",
     cost: 190,
-    passive: true,
   },
   {
     key: "freeze",
     tier: 4,
     name: "Freeze Module Tier 4",
-    description: "Freeze the enemy for 5 seconds. Self-inflicts 40 damage on use.",
+    description: "Your attacks have a chance to slow the enemy.",
     cost: 420,
-    active: true,
   },
   {
     key: "striker",
     tier: 6,
     name: "Striker Module Tier 6",
-    description: "3x fire rate for 5 seconds, but you take 30% more damage while active.",
+    description: "+20% fire rate and speed, but -10% armor.",
     cost: 760,
-    active: true,
   },
   {
     key: "golden",
     tier: 7,
     name: "Golden Module Tier 7",
-    description: "7 seconds of heavy shot deflection. Movement and fire rate are reduced while active.",
+    description: "10% chance to deflect incoming shots.",
     cost: 980,
-    active: true,
+  },
+];
+
+const PLAYER_BOT_TYPES = [
+  {
+    key: "acid",
+    name: "Acid Bot",
+    damage: 30,
+    cooldown: 2,
+    color: "#32CD32", // Green
+    abilityName: null,
+    abilityCooldown: 0,
+    ability: null,
+    attackName: "acid stream",
+    attack: acidAttack,
+  },
+  {
+    key: "sawblade",
+    name: "Swinging Sawblade Bot",
+    damage: 45,
+    cooldown: 2,
+    color: "#9932CC", // Purple
+    abilityName: null,
+    abilityCooldown: 0,
+    ability: null,
+    attackName: "saw swing",
+    attack: sawbladeAttack,
+  },
+  {
+    key: "hacker",
+    name: "Hacking Bot",
+    damage: 20, // Bullet damage
+    cooldown: 1, // 1 second delay
+    color: "#1E90FF", // Blue
+    abilityName: "System Hack",
+    abilityCooldown: 10,
+    attackName: "bullet",
+    attack: playerAttack, // Normal shot
+    ability: hackerAbility,
+  },
+  {
+    key: "sniper",
+    name: "Sniper Bot",
+    damage: 50,
+    cooldown: 3,
+    color: "#FF4500", // Red
+    abilityName: null,
+    abilityCooldown: 0,
+    ability: null,
+    attackName: "sniper shot",
+    attack: sniperAttack,
+  },
+  {
+    key: "claymore",
+    name: "Claymore Roomba",
+    damage: 20, // Bullet damage
+    cooldown: 1, // 1 second delay
+    color: "#FFD700", // Yellow
+    abilityName: "Detonate",
+    abilityCooldown: 12,
+    attackName: "standard shot",
+    attack: playerAttack,
+    ability: claymoreAbility,
   },
 ];
 
@@ -53,6 +110,7 @@ const BOT_TYPES = [
     name: "Acid Bot",
     damage: 30,
     cooldown: 2,
+    color: "#32CD32",
     attackName: "acid stream",
     unique6: "Smart Acid",
     unique6Description: "Missed acid crawls back toward the enemy.",
@@ -65,6 +123,7 @@ const BOT_TYPES = [
     name: "Swinging Sawblade Bot",
     damage: 45,
     cooldown: 2,
+    color: "#9932CC",
     attackName: "saw swing",
     unique6: "Improved Motors",
     unique6Description: "Swinging arm moves 2.5x faster.",
@@ -75,20 +134,22 @@ const BOT_TYPES = [
   {
     key: "hacker",
     name: "Hacking Bot",
-    damage: 40,
-    cooldown: 3,
-    attackName: "hack spike",
+    damage: 20,
+    cooldown: 1,
+    color: "#1E90FF",
+    attackName: "bullet",
     unique6: "HyperThreadingTechnology",
     unique6Description: "Hack lasts 2 more seconds and deals 20 more damage.",
     unique7: "Hyper Efficient Coding",
     unique7Description: "75% chance to chain a weaker second hack.",
-    attack: hackerAttack,
+    attack: playerAttack, // Uses bullets as primary
   },
   {
     key: "sniper",
     name: "Sniper Bot",
     damage: 50,
     cooldown: 3,
+    color: "#FF4500",
     attackName: "sniper shot",
     unique6: "Hyper Velocity",
     unique6Description: "Adds 15 damage to each shot.",
@@ -99,19 +160,23 @@ const BOT_TYPES = [
   {
     key: "claymore",
     name: "Claymore Roomba",
-    damage: 65,
-    cooldown: 3.4,
-    attackName: "claymore blast",
+    damage: 20,
+    cooldown: 1,
+    color: "#FFD700",
+    attackName: "standard shot",
     unique6: "Optimized Explosion Spreads",
     unique6Description: "Explosion coverage improves, adding 15 damage.",
     unique7: "Fire Infused Explosions",
     unique7Description: "Adds fire damage over time and reduces enemy armour.",
-    attack: claymoreAttack,
+    attack: playerAttack, // Uses bullets as primary
   },
 ];
 
 const dom = {
   arenaCanvas: document.querySelector("#arena-canvas"),
+  botSelectionScreen: document.querySelector("#bot-selection-screen"),
+  botSelectionContainer: document.querySelector("#bot-selection-container"),
+  arenaScreen: document.querySelector("#arena-screen"),
   encounterValue: document.querySelector("#encounter-value"),
   moneyValue: document.querySelector("#money-value"),
   recordValue: document.querySelector("#record-value"),
@@ -119,7 +184,7 @@ const dom = {
   startBattle: document.querySelector("#start-battle"),
   resetSave: document.querySelector("#reset-save"),
   fireButton: document.querySelector("#fire-button"),
-  berserkButton: document.querySelector("#berserk-button"),
+  abilityButton: document.querySelector("#ability-button"),
   battleLog: document.querySelector("#battle-log"),
   playerHealthText: document.querySelector("#player-health-text"),
   enemyHealthText: document.querySelector("#enemy-health-text"),
@@ -163,6 +228,7 @@ function setDisabled(node, value) {
 
 function defaultState() {
   return {
+    playerBotKey: null,
     encounter: 1,
     money: 0,
     wins: 0,
@@ -242,6 +308,10 @@ function getModuleUpgradeCost(nextLevel) {
 }
 
 function getPlayerProfile() {
+  const playerBot = PLAYER_BOT_TYPES.find((b) => b.key === state.playerBotKey) || PLAYER_BOT_TYPES[0];
+  const baseDamage = playerBot.damage;
+  const baseCooldown = playerBot.cooldown;
+
   const damageBonus = getModulePercent(state.modules.damage, 7.5);
   const healthBonus = getModulePercent(state.modules.health, 7.5);
   const armorBonus = getModulePercent(state.modules.armor, 7.5);
@@ -250,20 +320,22 @@ function getPlayerProfile() {
 
   const healthMultiplier = (1 + healthBonus / 100) * (hasElemental ? 0.9 : 1);
   return {
+    bot: playerBot,
     damageBonus,
     healthBonus,
     armorBonus,
     speedBonus,
     maxHealth: roundNumber(BASE_HEALTH * healthMultiplier),
-    shotDamage: roundNumber(BASE_PLAYER_DAMAGE * (1 + damageBonus / 100)),
-    elementalDamage: hasElemental ? roundNumber(BASE_PLAYER_DAMAGE * 0.1) : 0,
-    cooldown: BASE_PLAYER_COOLDOWN / (1 + speedBonus / 100),
+    shotDamage: roundNumber(baseDamage * (1 + damageBonus / 100)),
+    abilityCooldown: playerBot.abilityCooldown,
+    elementalDamage: hasElemental ? roundNumber(baseDamage * 0.1) : 0,
+    cooldown: baseCooldown / (1 + speedBonus / 100),
   };
 }
 
 function getEnemyBlueprint() {
   const stage = getProgressionStage(state.encounter);
-  const bot = BOT_TYPES[(state.encounter - 1) % BOT_TYPES.length];
+  const bot = BOT_TYPES[Math.floor(Math.random() * BOT_TYPES.length)];
   const moduleLevels = { damage: 0, health: 0, armor: 0, speed: 0 };
   const moduleKeys = Object.keys(moduleLevels);
   const modulePoints = Math.min(32, stage + Math.floor(stage / 2));
@@ -304,12 +376,16 @@ function createActor(kind, config) {
     name: config.name,
     maxHealth: config.maxHealth,
     health: config.maxHealth,
+    color: config.color || "#ccc",
     shotDamage: config.shotDamage,
     elementalDamage: config.elementalDamage || 0,
     armorBonus: config.armorBonus || 0,
     speedBonus: config.speedBonus || 0,
     cooldownDuration: config.cooldown,
     cooldownRemaining: 0,
+    abilityImpl: config.abilityImpl,
+    abilityCooldownDuration: config.abilityCooldown || 0,
+    abilityCooldownRemaining: 0,
     freezeFor: 0,
     disableFor: 0,
     burnFor: 0,
@@ -343,11 +419,13 @@ function startBattle() {
   const playerProfile = getPlayerProfile();
   const enemyBlueprint = getEnemyBlueprint();
   const player = createActor("player", {
-    key: "player",
-    name: "Your Bot",
+    key: playerProfile.bot.key,
+    name: playerProfile.bot.name,
+    color: playerProfile.bot.color,
     ...playerProfile,
     berserks: state.berserks,
-    attackImpl: playerAttack,
+    attackImpl: playerProfile.bot.attack,
+    abilityImpl: playerProfile.bot.ability,
     x: 220,
     y: 420,
     moveSpeed: BASE_MOVE_SPEED * (1 + playerProfile.speedBonus / 100),
@@ -355,6 +433,7 @@ function startBattle() {
   const enemy = createActor("enemy", {
     key: enemyBlueprint.bot.key,
     name: enemyBlueprint.bot.name,
+    color: enemyBlueprint.bot.color,
     maxHealth: enemyBlueprint.maxHealth,
     shotDamage: enemyBlueprint.baseDamage,
     elementalDamage: 0,
@@ -379,8 +458,13 @@ function startBattle() {
     intervalId: window.setInterval(tickBattle, TICK_MS),
   };
 
+  // Add a one second delay before shooting bullets, including at the start of the match
+  player.cooldownRemaining = 1;
+  enemy.cooldownRemaining = 1;
+
   pushLog(`Encounter ${state.encounter} started. ${enemy.name} enters on ${getDifficultyLabel(state.encounter)} difficulty.`);
-  maybeAutoBerserk(enemy, player);
+  applyPassiveBerserks(player);
+  applyPassiveBerserks(enemy);
   syncStaticUi();
   syncBattleUi();
 }
@@ -460,10 +544,11 @@ function tickBattle() {
   stepActorTimers(player, enemy, delta);
   stepActorTimers(enemy, player, delta);
 
-  maybeAutoBerserk(enemy, player);
-
   if (player.cooldownRemaining > 0) {
     player.cooldownRemaining = Math.max(0, player.cooldownRemaining - delta);
+  }
+  if (player.abilityCooldownRemaining > 0) {
+    player.abilityCooldownRemaining = Math.max(0, player.abilityCooldownRemaining - delta);
   }
 
   if (enemy.cooldownRemaining > 0) {
@@ -569,8 +654,6 @@ function isDisabled(actor) {
 
 function getEffectiveCooldown(actor) {
   let multiplier = actor.plasmaDebuffFor > 0 ? 1.1 : 1;
-  if (actor.berserkState?.key === "striker") multiplier /= 3;
-  if (actor.berserkState?.key === "golden") multiplier *= 1.3;
   if (actor.key === "sawblade" && actor.unique6) multiplier /= 2.5;
   return actor.cooldownDuration * multiplier;
 }
@@ -579,7 +662,7 @@ function applyDamage(target, amount, source, attackerName, options = {}) {
   if (target.health <= 0) return 0;
   const incoming = Math.max(0, amount);
 
-  if (target.berserkState?.key === "golden" && options.projectile !== false && Math.random() <= 0.9) {
+  if (target.berserks.includes("golden") && options.projectile !== false && Math.random() <= 0.1) {
     pushLog(`${target.name} deflected ${source}.`);
     if (Math.random() <= 0.4 && battle) {
       const reflectTarget = target.kind === "player" ? battle.enemy : battle.player;
@@ -592,8 +675,7 @@ function applyDamage(target, amount, source, attackerName, options = {}) {
 
   const armorMultiplier = Math.max(0.1, 1 - target.armorBonus / 100);
   const breakMultiplier = 1 + target.armorBreak / 100;
-  const berserkMultiplier = target.berserkState?.key === "striker" ? 1.3 : 1;
-  const finalDamage = roundNumber(incoming * armorMultiplier * breakMultiplier * berserkMultiplier);
+  const finalDamage = roundNumber(incoming * armorMultiplier * breakMultiplier);
   target.health = Math.max(0, target.health - finalDamage);
   pushLog(`${attackerName} used ${source} for ${finalDamage} damage.`);
   return finalDamage;
@@ -604,6 +686,9 @@ function playerAttack(attacker, defender) {
   applyDamage(defender, damage, "cannon shot", attacker.name);
   if (attacker.elementalDamage > 0) {
     applyDamage(defender, attacker.elementalDamage, "elemental splash", attacker.name, { projectile: false });
+  }
+  if (attacker.berserks.includes("freeze") && Math.random() <= 0.15) {
+    defender.moveSpeed *= 0.8; 
   }
 }
 
@@ -618,15 +703,18 @@ function acidAttack(attacker, defender) {
 }
 
 function sawbladeAttack(attacker, defender) {
-  const lossStep = attacker.unique7 ? (attacker.sawSwings > 0 && attacker.sawSwings % 3 === 0 ? 5 : 0) : 5;
+  // Starts at 45, -5 every hit
+  const degradation = 5;
+  const lossStep = attacker.unique7 ? (attacker.sawSwings > 0 && attacker.sawSwings % 3 === 0 ? degradation : 0) : degradation;
   attacker.sawSwings += 1;
   attacker.sawLoss += lossStep;
   const base = attacker.shotDamage - attacker.sawLoss - (attacker.unique7 ? 7 : 0);
   applyDamage(defender, Math.max(8, base), "saw swing", attacker.name);
 }
 
-function hackerAttack(attacker, defender) {
-  const damage = attacker.shotDamage + (attacker.unique6 ? 20 : 0);
+// This is now the Ability for the Hacker bot, not primary fire
+function hackerAbility(attacker, defender) {
+  const damage = 40 + (attacker.unique6 ? 20 : 0);
   const disableTime = 5 + (attacker.unique6 ? 2 : 0);
   applyDamage(defender, damage, "hack spike", attacker.name, { projectile: false });
   defender.disableFor = Math.max(defender.disableFor, disableTime);
@@ -658,9 +746,10 @@ function sniperAttack(attacker, defender) {
   }
 }
 
-function claymoreAttack(attacker, defender) {
-  let damage = attacker.shotDamage + (attacker.unique6 ? 15 : 0);
-  applyDamage(defender, damage, "claymore blast", attacker.name);
+// This is now the Ability for Claymore, not primary fire
+function claymoreAbility(attacker, defender) {
+  let damage = 65 + (attacker.unique6 ? 15 : 0);
+  applyDamage(defender, damage, "Explosion", attacker.name, { projectile: false });
   defender.armorBreak = Math.max(defender.armorBreak, attacker.unique7 ? 20 : 40);
   pushLog(`${defender.name}'s armour is compromised.`);
   if (attacker.unique7) {
@@ -670,48 +759,13 @@ function claymoreAttack(attacker, defender) {
   }
 }
 
-function maybeAutoBerserk(actor, opponent) {
-  if (!battle || actor.berserkState) return;
-
-  if (actor.berserks.includes("golden") && !actor.usedBerserks.includes("golden") && actor.health / actor.maxHealth <= 0.45) {
-    activateBerserk(actor, opponent, "golden");
-    return;
-  }
-  if (actor.berserks.includes("striker") && !actor.usedBerserks.includes("striker") && actor.health / actor.maxHealth <= 0.6) {
-    activateBerserk(actor, opponent, "striker");
-    return;
-  }
-  if (actor.berserks.includes("freeze") && !actor.usedBerserks.includes("freeze") && opponent.health / opponent.maxHealth <= 0.65) {
-    activateBerserk(actor, opponent, "freeze");
-    return;
-  }
-}
-
-function activateBerserk(actor, opponent, key) {
-  const berserk = BERSERKS.find((item) => item.key === key);
-  if (!berserk) return false;
-  if (actor.berserkState || !actor.berserks.includes(key)) return false;
-  if (actor.usedBerserks.includes(key)) return false;
-  if (isDisabled(actor)) return false;
-
-  if (key === "freeze") {
-    opponent.freezeFor = Math.max(opponent.freezeFor, 5);
-    actor.health = Math.max(0, actor.health - 40);
-    pushLog(`${actor.name} activated Freeze Module. ${opponent.name} is locked for 5 seconds.`);
-    pushLog(`${actor.name} took 40 self-damage from the cold backlash.`);
-  } else if (key === "striker") {
-    actor.berserkState = { key, name: berserk.name, remaining: 5 };
-    pushLog(`${actor.name} activated Striker Module for 5 seconds.`);
-  } else if (key === "golden") {
-    actor.berserkState = { key, name: berserk.name, remaining: 7 };
-    pushLog(`${actor.name} activated Golden Module for 7 seconds.`);
-  }
-
-  actor.usedBerserks.push(key);
-
-  syncBattleUi();
-  if (actor.health <= 0) {
-    endBattle(actor.kind === "player" ? "loss" : "win");
+function applyPassiveBerserks(actor) {
+  if (actor.berserks.includes("striker")) {
+    // Striker: +20% fire rate (reduce cooldown), +20% speed, -10% armor
+    actor.cooldownDuration *= 0.8;
+    actor.moveSpeed *= 1.2;
+    actor.armorBonus -= 10;
+    pushLog(`${actor.name} Striker Module active: Speed up, Armor down.`);
   }
   return true;
 }
@@ -730,15 +784,14 @@ function handlePlayerFire() {
   syncBattleUi();
 }
 
-function handlePlayerBerserk() {
+function handlePlayerAbility() {
   if (!battle) return;
-  const available = state.berserks.filter(
-    (key) => ["freeze", "striker", "golden"].includes(key) && !battle.player.usedBerserks.includes(key)
-  );
-  if (available.length === 0) return;
-
-  const preferred = ["freeze", "striker", "golden"].find((key) => available.includes(key));
-  activateBerserk(battle.player, battle.enemy, preferred);
+  const { player, enemy } = battle;
+  if (!player.abilityImpl || player.abilityCooldownRemaining > 0 || isDisabled(player)) return;
+  
+  player.abilityImpl(player, enemy);
+  player.abilityCooldownRemaining = player.abilityCooldownDuration;
+  pushLog(`${player.name} used ability.`);
   syncBattleUi();
 }
 
@@ -870,7 +923,7 @@ function syncBattleUi() {
       ]));
     }
     setDisabled(dom.fireButton, true);
-    setDisabled(dom.berserkButton, true);
+  setDisabled(dom.abilityButton, true);
     setDisabled(dom.startBattle, false);
     setText(dom.battleLog, lastBattleReport);
     renderArena();
@@ -899,10 +952,10 @@ function syncBattleUi() {
   }
   setDisabled(dom.fireButton, player.cooldownRemaining > 0 || isDisabled(player) || player.health <= 0 || enemy.health <= 0);
   setDisabled(
-    dom.berserkButton,
+    dom.abilityButton,
     isDisabled(player) ||
-    !state.berserks.some((key) => ["freeze", "striker", "golden"].includes(key) && !player.usedBerserks.includes(key)) ||
-    Boolean(player.berserkState)
+    !player.abilityImpl || 
+    player.abilityCooldownRemaining > 0
   );
   setDisabled(dom.startBattle, true);
   setText(dom.battleLog, battle.logLines.join("\n"));
@@ -955,6 +1008,8 @@ function resetSave() {
   state = defaultState();
   lastBattleReport = "";
   saveState();
+  renderBotSelection();
+  showScreen("bot-selection");
   syncStaticUi();
   syncBattleUi();
   renderShops();
@@ -1037,9 +1092,9 @@ function renderArena() {
     const enemyX = width * 0.7;
     const playerY = height * 0.58;
     const enemyY = height * 0.58;
-    drawHudText(context, 150, 10, distanceUnits(playerX, playerY, enemyX, enemyY));
-    drawPlayerBot(context, playerX, playerY, 150, 150, 10, now);
-    drawEnemyBot(context, enemyX, enemyY, 200, 200, now);
+    drawHudText(context, 150, distanceUnits(playerX, playerY, enemyX, enemyY));
+    drawBot(context, playerX, playerY, 150, 150, "#0000FF", now, { kind: "player", color: "#666" }); // Demo player
+    drawBot(context, enemyX, enemyY, 200, 200, "#FF0000", now, { kind: "enemy", color: "#666" }); // Demo enemy
     return;
   }
 
@@ -1049,45 +1104,51 @@ function renderArena() {
   const enemyX = enemy.x * (width / 1280);
   const playerY = player.y * (height / 720);
   const enemyY = enemy.y * (height / 720);
-  const playerAmmo = Math.round(cooldownPercent(player) / 10);
 
-  drawHudText(context, player.health, playerAmmo, distanceUnits(playerX, playerY, enemyX, enemyY));
-  drawPlayerBot(context, playerX, playerY, player.health, player.maxHealth, playerAmmo, now, player);
-  drawEnemyBot(context, enemyX, enemyY, enemy.health, enemy.maxHealth, now, enemy);
+  drawHudText(context, player.health, distanceUnits(playerX, playerY, enemyX, enemyY));
+  drawBot(context, playerX, playerY, player.health, player.maxHealth, "#0000FF", now, player);
+  drawBot(context, enemyX, enemyY, enemy.health, enemy.maxHealth, "#FF0000", now, enemy);
   drawShot(context, playerX + 16 * player.facing, playerY - 16, enemyX - 18 * enemy.facing, enemyY - 6, justFired(player), "#2f44ff");
   drawShot(context, enemyX + 14 * enemy.facing, enemyY - 4, playerX + 12 * player.facing, playerY - 12, justFired(enemy), "#ff4338");
 }
 
-function drawHudText(context, hp, ammo, dist) {
+function drawHudText(context, hp, dist) {
   context.save();
   context.fillStyle = "#f5f5f5";
   context.font = '700 28px "Share Tech Mono", monospace';
   context.textBaseline = "top";
-  context.fillText(`HP: ${Math.max(0, Math.round(hp))} | AMMO: ${Math.max(0, ammo)} | DIST: ${dist.toFixed(1)}U`, 28, 24);
+  context.fillText(`HP: ${Math.max(0, Math.round(hp))} | DIST: ${dist.toFixed(1)}U`, 28, 24);
   context.restore();
 }
 
-function drawPlayerBot(context, x, y, health, maxHealth, ammo, now, actor = null) {
+function drawBot(context, x, y, health, maxHealth, identityColor, now, actor) {
   context.save();
   context.translate(x, y);
 
-  context.strokeStyle = "#0f25ff";
+  // Main Body Body
+  context.strokeStyle = actor.color || "#fff";
   context.lineWidth = 6;
   context.beginPath();
   context.arc(0, 0, 40, 0, Math.PI * 2);
   context.stroke();
 
-  context.fillStyle = "#3948ff";
+  // Inner Fill
+  context.fillStyle = actor.color || "#ccc";
   context.beginPath();
   context.arc(0, 0, 25, 0, Math.PI * 2);
   context.fill();
 
+  // Weapon/Facing Arm
   context.strokeStyle = "rgba(15, 37, 255, 0.95)";
   context.lineWidth = 4;
   context.beginPath();
   context.moveTo(0, 0);
   context.lineTo(26 * (actor?.facing || 1), -26);
   context.stroke();
+
+  // Identity Square (Blue = You, Red = Opponent)
+  context.fillStyle = identityColor;
+  context.fillRect(-8, -8, 16, 16);
 
   if (actor?.berserkState) {
     context.strokeStyle = "#ffd24d";
@@ -1109,49 +1170,6 @@ function drawPlayerBot(context, x, y, health, maxHealth, ammo, now, actor = null
 
   context.restore();
   drawHealthBar(context, x - 30, y - 48, 60, health, maxHealth);
-
-  context.save();
-  context.fillStyle = "#ff2b2b";
-  context.font = '700 18px "Share Tech Mono", monospace';
-  context.fillText(`${Math.max(0, ammo)}`, x + 10, y - 24);
-  context.restore();
-}
-
-function drawEnemyBot(context, x, y, health, maxHealth, now, actor = null) {
-  context.save();
-  context.translate(x, y);
-
-  context.fillStyle = "#ff3a2f";
-  context.beginPath();
-  context.arc(0, 0, 24, 0, Math.PI * 2);
-  context.fill();
-
-  if (actor?.berserkState) {
-    context.strokeStyle = "#ffd24d";
-    context.lineWidth = 3;
-    context.beginPath();
-    context.arc(0, 0, 36 + Math.sin(now * 16) * 2, 0, Math.PI * 2);
-    context.stroke();
-  }
-
-  if (actor && isDisabled(actor)) {
-    context.strokeStyle = "#8fd3ff";
-    context.setLineDash([6, 6]);
-    context.lineWidth = 2;
-    context.beginPath();
-    context.arc(0, 0, 42, 0, Math.PI * 2);
-    context.stroke();
-    context.setLineDash([]);
-  }
-
-  context.restore();
-  drawHealthBar(context, x - 30, y - 48, 60, health, maxHealth);
-
-  context.save();
-  context.fillStyle = "#f5f5f5";
-  context.font = '700 18px "Share Tech Mono", monospace';
-  context.fillText(`${Math.max(0, Math.round(health))}`, x + 38, y - 40);
-  context.restore();
 }
 
 function drawHealthBar(context, x, y, width, health, maxHealth) {
@@ -1205,11 +1223,6 @@ function setInput(eventCode, pressed) {
   if (eventCode === "KeyD" || eventCode === "ArrowRight") inputState.right = pressed;
 }
 
-function tickArenaFrame() {
-  renderArena();
-  arenaFrame = window.requestAnimationFrame(tickArenaFrame);
-}
-
 function clamp(value, min, max) {
   return Math.min(max, Math.max(min, value));
 }
@@ -1218,29 +1231,81 @@ function roundNumber(value) {
   return Math.round(value * 10) / 10;
 }
 
+function showScreen(screen) {
+  dom.botSelectionScreen.classList.add("hidden");
+  dom.arenaScreen.classList.add("hidden");
+
+  if (screen === "bot-selection") {
+    dom.botSelectionScreen.classList.remove("hidden");
+  } else if (screen === "arena") {
+    dom.arenaScreen.classList.remove("hidden");
+  }
+}
+
+function renderBotSelection() {
+  if (!dom.botSelectionContainer) return;
+  dom.botSelectionContainer.replaceChildren();
+
+  PLAYER_BOT_TYPES.forEach((bot) => {
+    const card = document.createElement("article");
+    card.className = "bot-card";
+    card.dataset.botKey = bot.key;
+    card.innerHTML = `
+      <h3>${bot.name}</h3>
+    `;
+    card.addEventListener("click", () => {
+      selectPlayerBot(bot.key);
+    });
+    dom.botSelectionContainer.appendChild(card);
+  });
+}
+
+function selectPlayerBot(botKey) {
+  state.playerBotKey = botKey;
+  saveState();
+  showScreen("arena");
+  resizeArenaCanvas();
+  initializeArena();
+}
+
+function initializeArena() {
+  if (dom.startBattle || dom.arenaCanvas) {
+    syncStaticUi();
+    syncBattleUi();
+    renderShops();
+    renderInventory();
+    scheduleAutoAdvance();
+  }
+}
+
+function main() {
+  state = loadState();
+  renderBotSelection();
+  showScreen("bot-selection");
+}
+
 if (dom.startBattle) dom.startBattle.addEventListener("click", startBattle);
 if (dom.resetSave) dom.resetSave.addEventListener("click", resetSave);
 if (dom.fireButton) dom.fireButton.addEventListener("click", handlePlayerFire);
-if (dom.berserkButton) dom.berserkButton.addEventListener("click", handlePlayerBerserk);
+if (dom.abilityButton) dom.abilityButton.addEventListener("click", handlePlayerAbility);
+
+function tickArenaFrame() {
+  renderArena();
+  arenaFrame = window.requestAnimationFrame(tickArenaFrame);
+}
 
 if (dom.arenaCanvas) {
   resizeArenaCanvas();
   if (!arenaFrame) {
     arenaFrame = window.requestAnimationFrame(tickArenaFrame);
   }
-
   dom.arenaCanvas.addEventListener("pointerdown", handlePlayerFire);
   window.addEventListener("resize", resizeArenaCanvas);
   window.addEventListener("keydown", (event) => {
     setInput(event.code, true);
     if (event.code === "Space") {
       event.preventDefault();
-      if (!event.repeat) handlePlayerFire();
-      return;
-    }
-    if (event.code === "ShiftLeft" || event.code === "ShiftRight") {
-      event.preventDefault();
-      if (!event.repeat) handlePlayerBerserk();
+      if (!event.repeat) handlePlayerAbility();
       return;
     }
     if (event.code.startsWith("Arrow") || event.code.startsWith("Key")) {
@@ -1261,10 +1326,4 @@ if (dom.arenaCanvas) {
   });
 }
 
-if (dom.startBattle || dom.arenaCanvas) {
-  syncStaticUi();
-  syncBattleUi();
-  renderShops();
-  renderInventory();
-  scheduleAutoAdvance();
-}
+main();
