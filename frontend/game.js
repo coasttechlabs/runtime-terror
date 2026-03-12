@@ -566,6 +566,16 @@ function tickBattle() {
   if (player.cooldownRemaining > 0) {
     player.cooldownRemaining = Math.max(0, player.cooldownRemaining - delta);
   }
+
+  // Sawblade Passive Logic: Auto-attacks if in range (30 units) and cooldown is ready
+  if (player.key === "sawblade" && player.cooldownRemaining <= 0 && !isDisabled(player)) {
+      const dist = distanceUnits(player.x, player.y, enemy.x, enemy.y);
+      if (dist <= 30) {
+          player.attackImpl(player, enemy);
+          player.cooldownRemaining = getEffectiveCooldown(player);
+      }
+  }
+
   if (player.abilityCooldownRemaining > 0) {
     player.abilityCooldownRemaining = Math.max(0, player.abilityCooldownRemaining - delta);
   }
@@ -806,13 +816,11 @@ function handlePlayerFire() {
 
   // Manual Aim Logic
   const rect = dom.arenaCanvas.getBoundingClientRect();
-  const scaleX = dom.arenaCanvas.width / rect.width;
-  const scaleY = dom.arenaCanvas.height / rect.height;
-  
-  const mouseCanvasX = (inputState.mouseX - rect.left) * scaleX;
-  const mouseCanvasY = (inputState.mouseY - rect.top) * scaleY;
+  // Convert mouse position (CSS pixels) directly to Game Logic Coordinates (1280x720)
+  const mouseGameX = (inputState.mouseX - rect.left) * (1280 / rect.width);
+  const mouseGameY = (inputState.mouseY - rect.top) * (720 / rect.height);
 
-  const angle = Math.atan2(mouseCanvasY - player.y, mouseCanvasX - player.x);
+  const angle = Math.atan2(mouseGameY - player.y, mouseGameX - player.x);
   
   // Raycast Hit Check
   const angleToEnemy = Math.atan2(enemy.y - player.y, enemy.x - player.x);
