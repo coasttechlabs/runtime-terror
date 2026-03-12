@@ -242,6 +242,8 @@ function defaultState() {
   return {
     playerBotKey: null,
     encounter: 1,
+    difficultyLevel: 0,
+    consecutiveLosses: 0,
     money: 0,
     wins: 0,
     losses: 0,
@@ -280,14 +282,10 @@ function saveState() {
   window.localStorage.setItem(currentStorageKey, JSON.stringify(state));
 }
 
-function getProgressionStage(encounter) {
-  return Math.max(0, encounter - 1);
-}
-
-function getDifficultyLabel(encounter) {
-  const stage = getProgressionStage(encounter);
+function getDifficultyLabel(difficultyLevel) {
+  const stage = difficultyLevel;
   if (stage === 0) return "Boot";
-  const tier = Math.min(7, Math.ceil(stage / 2));
+  const tier = Math.ceil(stage / 2);
   const plus = stage % 2 === 0;
   return `Tier ${tier}${plus ? "+" : ""}`;
 }
@@ -350,7 +348,7 @@ function getPlayerProfile() {
 }
 
 function getEnemyBlueprint() {
-  const stage = getProgressionStage(state.encounter);
+  const stage = state.difficultyLevel;
   const bot = BOT_TYPES[Math.floor(Math.random() * BOT_TYPES.length)];
   const moduleLevels = { damage: 0, health: 0, armor: 0, speed: 0 };
   const moduleKeys = Object.keys(moduleLevels);
@@ -480,7 +478,7 @@ function startBattle() {
   player.cooldownRemaining = 1;
   enemy.cooldownRemaining = 1;
 
-  pushLog(`Encounter ${state.encounter} started. ${enemy.name} enters on ${getDifficultyLabel(state.encounter)} difficulty.`);
+  pushLog(`Encounter ${state.encounter} started. ${enemy.name} enters on ${getDifficultyLabel(state.difficultyLevel)} difficulty.`);
   applyPassiveBerserks(player);
   applyPassiveBerserks(enemy);
   syncStaticUi();
@@ -494,16 +492,32 @@ function endBattle(result) {
 
   const enemy = battle.enemy;
   const finalLogLine = result === "win" ? "You won the encounter." : `${battle.enemy.name} won the encounter.`;
-  const baseReward = 100 + (state.encounter - 1) * 52;
+  
+  // Money = 100 * 2^difficulty (Doubles each difficulty step)
+  const baseReward = 100 * Math.pow(2, state.difficultyLevel);
+  
   const damagePercent = clamp(((enemy.maxHealth - Math.max(enemy.health, 0)) / enemy.maxHealth) * 100, 0, 100);
   let reward = baseReward;
 
   if (result === "loss") {
     reward = calculateLossReward(baseReward, damagePercent);
     state.losses += 1;
+    state.consecutiveLosses += 1;
+    
+    // Bot gets easier on loss
+    state.difficultyLevel = Math.max(0, state.difficultyLevel - 1);
+
+    // Lose 3 times -> Go back (Reset difficulty)
+    if (state.consecutiveLosses >= 3) {
+      state.difficultyLevel = 0;
+      pushLog("3 consecutive losses. Difficulty reset to start.");
+    }
+    
     pushLog(`Defeat. You damaged the enemy for ${damagePercent.toFixed(1)}% and still salvaged $${reward}.`);
   } else {
     state.wins += 1;
+    state.consecutiveLosses = 0;
+    state.difficultyLevel += 1; // Gets harder on win
     pushLog(`Victory. Reward collected: $${reward}.`);
   }
 
@@ -543,7 +557,7 @@ function calculateLossReward(baseReward, damagePercent) {
 }
 
 function maybeGrantSalvage(result) {
-  const difficulty = getDifficultyLabel(state.encounter);
+  const difficulty = getDifficultyLabel(state.difficultyLevel);
   if (!difficulty.startsWith("Tier 7")) return;
   if (!battle) return;
 
@@ -987,7 +1001,7 @@ function syncStaticUi() {
   setText(dom.encounterValue, `${state.encounter}`);
   setText(dom.moneyValue, `$${state.money}`);
   setText(dom.recordValue, `${state.wins}W / ${state.losses}L`);
-  setText(dom.difficultyValue, getDifficultyLabel(state.encounter));
+  setText(dom.difficultyValue, getDifficultyLabel(state.difficultyLevel));
 }
 
 function syncBattleUi() {
@@ -1048,7 +1062,7 @@ function syncBattleUi() {
       `Health ${enemy.maxHealth}`,
       `Armour ${enemy.armorBonus.toFixed(1)}%`,
       `Speed ${enemy.speedBonus.toFixed(1)}%`,
-      `${getDifficultyLabel(state.encounter)} enemy`,
+      `${getDifficultyLabel(state.difficultyLevel)} enemy`,
     ]));
   }
   setDisabled(dom.fireButton, player.cooldownRemaining > 0 || isDisabled(player) || player.health <= 0 || enemy.health <= 0);
@@ -1112,6 +1126,7 @@ function resetSave() {
     autoAdvanceTimeout = null;
   }
   state = defaultState();
+  // Ensure we save the reset state to the CURRENT key (user specific)
   lastBattleReport = "";
   saveState();
   renderBotSelection();

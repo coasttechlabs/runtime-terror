@@ -659,7 +659,7 @@
     const currentStreakValue = document.getElementById("profile-current-streak");
     const longestStreakValue = document.getElementById("profile-longest-streak");
     const moneyValue = document.getElementById("profile-money");
-    const STORAGE_KEY = "runtime-terror-solo-save-v2";
+    const STORAGE_KEY_BASE = "runtime-terror-solo-save-v2";
     const sideButtons = Array.from(document.querySelectorAll(".side-btn[data-tab]"));
     const tabPanels = {
       profile: document.getElementById("panel-profile"),
@@ -953,9 +953,13 @@
 
     // --- State & Cost Logic ---
 
+    function getStorageKey() {
+      return currentUser ? `${STORAGE_KEY_BASE}-${currentUser.uid}` : STORAGE_KEY_BASE;
+    }
+
     function loadLocalState() {
       try {
-        const raw = localStorage.getItem(STORAGE_KEY);
+        const raw = localStorage.getItem(getStorageKey());
         if (!raw) return { money: 0, modules: { damage: 0, health: 0, armor: 0, speed: 0 }, berserks: [] };
         const data = JSON.parse(raw);
         if (!data.modules) data.modules = { damage: 0, health: 0, armor: 0, speed: 0 };
@@ -968,7 +972,7 @@
     }
 
     function saveLocalState(state) {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+      localStorage.setItem(getStorageKey(), JSON.stringify(state));
       if (moneyValue) moneyValue.textContent = `$${state.money}`;
       renderUpgrades();
     }
@@ -1286,6 +1290,7 @@
         friendList.appendChild(chip("Not logged in"));
         friendAddedList.innerHTML = "";
         friendAddedList.appendChild(chip("Not logged in"));
+        renderUpgrades();
         return;
       }
 
@@ -1310,7 +1315,7 @@
       }
       
       try {
-        const raw = localStorage.getItem(STORAGE_KEY);
+        const raw = localStorage.getItem(`${STORAGE_KEY_BASE}-${user.uid}`);
         if (raw) {
           const data = JSON.parse(raw);
           moneyValue.textContent = `$${data.money || 0}`;
@@ -1323,6 +1328,7 @@
       addFriendButton.disabled = false;
       setStatus("Send a friend request by username or email.");
       watchFriendRequests();
+      renderUpgrades();
     });
   </script>
 </body>
