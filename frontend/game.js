@@ -499,7 +499,6 @@ function endBattle(result) {
   state.money += Math.floor(reward);
   maybeGrantSalvage(result);
   state.encounter += 1;
-  autoSpendMoney();
   saveState();
 
   pushLog(finalLogLine);

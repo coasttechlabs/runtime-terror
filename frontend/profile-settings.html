@@ -595,6 +595,10 @@
               <div class="stat-label">Longest Streak</div>
               <div class="stat-value" id="profile-longest-streak">0</div>
             </div>
+            <div class="stat">
+              <div class="stat-label">Money</div>
+              <div class="stat-value" id="profile-money">$0</div>
+            </div>
           </div>
           <div class="actions">
             <button id="save-profile-btn" class="action-btn primary" type="button">Save</button>
@@ -654,6 +658,8 @@
     const levelValue = document.getElementById("profile-level");
     const currentStreakValue = document.getElementById("profile-current-streak");
     const longestStreakValue = document.getElementById("profile-longest-streak");
+    const moneyValue = document.getElementById("profile-money");
+    const STORAGE_KEY = "runtime-terror-solo-save-v2";
     const sideButtons = Array.from(document.querySelectorAll(".side-btn[data-tab]"));
     const tabPanels = {
       profile: document.getElementById("panel-profile"),
@@ -1149,6 +1155,7 @@
         levelValue.textContent = "0";
         currentStreakValue.textContent = "0";
         longestStreakValue.textContent = "0";
+        moneyValue.textContent = "$0";
         setProfileStatus("Log in to edit your profile.", "err");
         setStatus("Log in to send friend requests.", "err");
         addFriendButton.disabled = true;
@@ -1179,6 +1186,17 @@
         hydrateProfileForm(currentProfile, user);
         setProfileStatus(error?.message || "Profile loaded with limited access.", "err");
       }
+      
+      try {
+        const raw = localStorage.getItem(STORAGE_KEY);
+        if (raw) {
+          const data = JSON.parse(raw);
+          moneyValue.textContent = `$${data.money || 0}`;
+        }
+      } catch (e) {
+        console.warn("Failed to load local game data", e);
+      }
+
       friendInput.disabled = false;
       addFriendButton.disabled = false;
       setStatus("Send a friend request by username or email.");
