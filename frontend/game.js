@@ -135,6 +135,7 @@ const dom = {
   upgradeShop: document.querySelector("#upgrade-shop"),
   berserkShop: document.querySelector("#berserk-shop"),
   uniqueInventory: document.querySelector("#unique-inventory"),
+  botSelect: document.querySelector("#bot-select"),
   textOverlay: null,
 };
 
@@ -301,9 +302,7 @@ function getPlayerProfile() {
     armorBonus,
     speedBonus,
     maxHealth: roundNumber(BASE_HEALTH * healthMultiplier),
-    shotDamage: roundNumber(BASE_PLAYER_DAMAGE * (1 + damageBonus / 100)),
     elementalDamage: hasElemental ? roundNumber(BASE_PLAYER_DAMAGE * 0.1) : 0,
-    cooldown: BASE_PLAYER_COOLDOWN / (1 + speedBonus / 100),
   };
 }
 
@@ -386,14 +385,18 @@ function startBattle() {
     autoAdvanceTimeout = null;
   }
 
+  const selectedKey = dom.botSelect ? dom.botSelect.value : "acid";
+  const selectedBot = BOT_TYPES.find((b) => b.key === selectedKey) || BOT_TYPES[0];
   const playerProfile = getPlayerProfile();
   const enemyBlueprint = getEnemyBlueprint();
   const player = createActor("player", {
-    key: "player",
-    name: "Your Bot",
+    key: selectedKey,
+    name: selectedBot.name,
     ...playerProfile,
+    shotDamage: roundNumber(selectedBot.damage * (1 + playerProfile.damageBonus / 100)),
+    cooldown: selectedBot.cooldown / (1 + playerProfile.speedBonus / 100),
     berserks: state.berserks,
-    attackImpl: playerAttack,
+    attackImpl: selectedBot.attack,
     x: 220,
     y: 420,
     moveSpeed: BASE_MOVE_SPEED * (1 + playerProfile.speedBonus / 100),
@@ -649,6 +652,12 @@ function applyDamage(target, amount, source, attackerName, options = {}) {
   return finalDamage;
 }
 
+function checkSecondaryEffects(attacker, defender) {
+  if (attacker.elementalDamage > 0) {
+    applyDamage(defender, attacker.elementalDamage, "elemental splash", attacker.name, { projectile: false });
+  }
+}
+
 function playerAttack(attacker, defender) {
   const damage = attacker.shotDamage;
   applyDamage(defender, damage, "cannon shot", attacker.name);
@@ -665,6 +674,7 @@ function acidAttack(attacker, defender) {
     defender.armorBreak = 20;
     pushLog(`${defender.name}'s armour has corroded. Incoming damage increased by 20%.`);
   }
+  checkSecondaryEffects(attacker, defender);
 }
 
 function sawbladeAttack(attacker, defender) {
@@ -673,6 +683,7 @@ function sawbladeAttack(attacker, defender) {
   attacker.sawLoss += lossStep;
   const base = attacker.shotDamage - attacker.sawLoss - (attacker.unique7 ? 7 : 0);
   applyDamage(defender, Math.max(8, base), "saw swing", attacker.name);
+  checkSecondaryEffects(attacker, defender);
 }
 
 function hackerAttack(attacker, defender) {
@@ -689,6 +700,7 @@ function hackerAttack(attacker, defender) {
     applyDamage(defender, chainedDamage, "rehack", attacker.name, { projectile: false });
     pushLog("Hyper Efficient Coding triggered a weaker re-hack.");
   }
+  checkSecondaryEffects(attacker, defender);
 }
 
 function sniperAttack(attacker, defender) {
@@ -706,6 +718,7 @@ function sniperAttack(attacker, defender) {
       pushLog(`${defender.name} is destabilized. Damage, speed, and health efficiency reduced by 10%.`);
     }
   }
+  checkSecondaryEffects(attacker, defender);
 }
 
 function claymoreAttack(attacker, defender) {
@@ -718,6 +731,7 @@ function claymoreAttack(attacker, defender) {
     defender.burnDamage = 10;
     pushLog(`${defender.name} is burning for 2 seconds.`);
   }
+  checkSecondaryEffects(attacker, defender);
 }
 
 function maybeAutoBerserk(actor, opponent) {
