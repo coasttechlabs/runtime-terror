@@ -263,11 +263,18 @@
     <h1 class="title">Game</h1>
 
     <section class="modes" aria-label="Game modes">
-      <button class="mode-btn primary" type="button">Solo</button>
-      <button class="mode-btn" type="button">Multiplayer</button>
-      <button class="mode-btn local" type="button">Local</button>
+      <button class="mode-btn primary" type="button" data-href="./game.html">Solo</button>
+      <button class="mode-btn" type="button" disabled>Multiplayer</button>
+      <button class="mode-btn local" type="button" disabled>Local</button>
     </section>
   </main>
   <script type="module" src="./nav.js"></script>
+  <script>
+    document.querySelectorAll("[data-href]").forEach((button) => {
+      button.addEventListener("click", () => {
+        window.location.href = button.dataset.href;
+      });
+    });
+  </script>
 </body>
 </html>
