@@ -418,12 +418,9 @@
 
   <script type="module" src="./nav.js"></script>
   <script type="module">
-    import { auth, db } from "./firebase.js";
+    import { auth } from "./firebase.js";
     import { getApiBase } from "./api-base.js";
     import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-auth.js";
-    import { doc, getDoc, serverTimestamp, updateDoc } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore.js";
-
-    const USERS_COLLECTION = "users";
     const API_BASE = getApiBase();
 
     const adminMeta = document.getElementById("admin-meta");
@@ -506,10 +503,12 @@
     }
 
     async function updateUserFields(uid, fields) {
-      await updateDoc(doc(db, USERS_COLLECTION, uid), {
-        ...fields,
-        updatedAt: serverTimestamp()
+      const result = await apiRequest(`/admin/users/${encodeURIComponent(uid)}`, {
+        method: "PATCH",
+        token: activeIdToken,
+        body: fields
       });
+      return result.user;
     }
 
     async function findUser(identifier) {
@@ -522,12 +521,10 @@
     }
 
     async function getFullUser(uid) {
-      const snapshot = await getDoc(doc(db, USERS_COLLECTION, uid));
-      if (!snapshot.exists()) {
-        throw new Error("User document not found.");
-      }
-
-      const data = snapshot.data() || {};
+      const result = await apiRequest(`/admin/users/${encodeURIComponent(uid)}`, {
+        token: activeIdToken
+      });
+      const data = result.user || {};
       return {
         uid,
         username: data.username || "",
@@ -696,7 +693,7 @@
         await refreshActiveUser();
         setStatus(`Increased level for ${activeUser.username || activeUser.uid} to ${newLevel}.`, "ok");
       } catch (e) {
-        setStatus(e.message, "err");
+        setStatus(e?.message || "Failed to increase level.", "err");
       } finally {
         addLevelBtn.disabled = false;
       }
@@ -716,7 +713,7 @@
         await refreshActiveUser();
         setStatus(`Decreased level for ${activeUser.username || activeUser.uid} to ${newLevel}.`, "ok");
       } catch (e) {
-        setStatus(e.message, "err");
+        setStatus(e?.message || "Failed to decrease level.", "err");
       } finally {
         removeLevelBtn.disabled = false;
       }
@@ -731,7 +728,7 @@
         await refreshActiveUser();
         setStatus(`User ${activeUser.username || activeUser.uid} has been banned.`, "ok");
       } catch (e) {
-        setStatus(e.message, "err");
+        setStatus(e?.message || "Failed to ban user.", "err");
       } finally {
         banBtn.disabled = false;
       }
