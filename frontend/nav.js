@@ -9,8 +9,7 @@ const PUBLIC_LINKS = [
 
 const PRIVATE_LINKS = [
   { href: "./game-search.html", label: "Game" },
-  { href: "./profile-settings.html", label: "Profile" },
-  { href: "./admin-panel.html", label: "Admin" }
+  { href: "./profile-settings.html", label: "Profile" }
 ];
 
 function getNavElement() {
@@ -32,10 +31,39 @@ function makeLogoutLink() {
   return anchor;
 }
 
-function getLinksForUser(user) {
+function isAdminClaims(claims) {
+  if (!claims || typeof claims !== "object") return false;
+  if (claims.admin === true) return true;
+
+  if (typeof claims.role === "string" && ["admin", "superadmin"].includes(claims.role.toLowerCase())) {
+    return true;
+  }
+
+  if (Array.isArray(claims.roles)) {
+    const normalized = claims.roles.map((role) => String(role).toLowerCase());
+    if (normalized.includes("admin") || normalized.includes("superadmin")) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
+async function getLinksForUser(user) {
   const links = [...PUBLIC_LINKS];
   if (user) {
-    links.push(...PRIVATE_LINKS, { href: "#", label: "Logout", action: "logout" });
+    links.push(...PRIVATE_LINKS);
+
+    try {
+      const tokenResult = await user.getIdTokenResult();
+      if (isAdminClaims(tokenResult.claims)) {
+        links.push({ href: "./admin-panel.html", label: "Admin" });
+      }
+    } catch (error) {
+      console.error("Failed to inspect auth claims for nav:", error);
+    }
+
+    links.push({ href: "#", label: "Logout", action: "logout" });
   } else {
     links.push({ href: "./login.html", label: "Login" }, { href: "./signup.html", label: "Sign Up" });
   }
@@ -80,8 +108,8 @@ if (nav) {
   wireLogout(nav);
   let lastRenderedSignature = null;
 
-  onAuthStateChanged(auth, (user) => {
-    const links = getLinksForUser(user);
+  onAuthStateChanged(auth, async (user) => {
+    const links = await getLinksForUser(user);
     const nextSignature = linksSignature(links);
     if (nextSignature === lastRenderedSignature) return;
 
