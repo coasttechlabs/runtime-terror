@@ -1,4 +1,8 @@
-const STORAGE_KEY = "runtime-terror-solo-save-v2";
+import { auth } from "./firebase.js";
+import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-auth.js";
+
+const STORAGE_KEY_BASE = "runtime-terror-solo-save-v2";
+let currentStorageKey = STORAGE_KEY_BASE;
 const TICK_MS = 16;
 const BASE_HEALTH = 150;
 const BASE_MOVE_SPEED = 180;
@@ -205,6 +209,7 @@ const dom = {
   upgradeShop: document.querySelector("#upgrade-shop"),
   berserkShop: document.querySelector("#berserk-shop"),
   uniqueInventory: document.querySelector("#unique-inventory"),
+  profileButton: document.querySelector("#profile-button"),
 };
 
 let state = loadState();
@@ -253,7 +258,7 @@ function defaultState() {
 
 function loadState() {
   try {
-    const raw = window.localStorage.getItem(STORAGE_KEY);
+    const raw = window.localStorage.getItem(currentStorageKey);
     if (!raw) return defaultState();
     const parsed = JSON.parse(raw);
     return {
@@ -272,7 +277,7 @@ function loadState() {
 }
 
 function saveState() {
-  window.localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+  window.localStorage.setItem(currentStorageKey, JSON.stringify(state));
 }
 
 function getProgressionStage(encounter) {
@@ -1442,4 +1447,21 @@ if (dom.arenaCanvas) {
   });
 }
 
-main();
+onAuthStateChanged(auth, (user) => {
+  if (user) {
+    currentStorageKey = `${STORAGE_KEY_BASE}-${user.uid}`;
+  } else {
+    currentStorageKey = STORAGE_KEY_BASE;
+  }
+  
+  // Reload state for the specific user (or guest)
+  state = loadState();
+  
+  // Re-initialize UI
+  renderBotSelection();
+  if (!battle) {
+    showScreen("bot-selection");
+  }
+  syncStaticUi();
+  syncBattleUi();
+});
