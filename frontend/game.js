@@ -2,7 +2,7 @@ const STORAGE_KEY = "runtime-terror-solo-save-v1";
 const TICK_MS = 16;
 const BASE_HEALTH = 100;
 const BASE_PLAYER_DAMAGE = 22;
-const BASE_PLAYER_COOLDOWN = 1.6;
+const BASE_PLAYER_COOLDOWN = 1.0;
 const BASE_MOVE_SPEED = 180;
 
 const MODULES = [
@@ -417,6 +417,7 @@ function startBattle() {
   });
   // Delay enemy first shot by 1 second
   enemy.cooldownRemaining = 1.0;
+  player.cooldownRemaining = 1.0;
 
   battle = {
     startedAt: Date.now(),
