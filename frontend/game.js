@@ -1152,8 +1152,8 @@ function renderArena() {
     const enemyX = width * 0.7;
     const playerY = height * 0.58;
     const enemyY = height * 0.58;
-    drawHudText(context, 150, distanceUnits(playerX, playerY, enemyX, enemyY));
-    drawBot(context, playerX, playerY, 150, 150, "#0000FF", now, { kind: "player", color: "#666" }); // Demo player
+    drawHudText(context, BASE_HEALTH, distanceUnits(playerX, playerY, enemyX, enemyY));
+    drawBot(context, playerX, playerY, BASE_HEALTH, BASE_HEALTH, "#0000FF", now, { kind: "player", color: "#666" }); // Demo player
     drawBot(context, enemyX, enemyY, 200, 200, "#FF0000", now, { kind: "enemy", color: "#666" }); // Demo enemy
     return;
   }
