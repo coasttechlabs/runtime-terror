@@ -1,0 +1,292 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Bot Upgrades</title>
+  <style>
+    :root {
+      --bg-color: #121212;
+      --card-bg: #1e1e1e;
+      --text-main: #e0e0e0;
+      --text-muted: #a0a0a0;
+      --accent: #4a90e2;
+      --border: #333;
+      --success: #28a745;
+      --danger: #dc3545;
+      --warning: #ffc107;
+    }
+
+    body {
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      background-color: var(--bg-color);
+      color: var(--text-main);
+      margin: 0;
+      padding: 2rem;
+    }
+
+    h1, h2 {
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      margin-bottom: 1.5rem;
+    }
+
+    .section-title {
+      border-bottom: 2px solid var(--border);
+      padding-bottom: 0.5rem;
+      margin-top: 2rem;
+      margin-bottom: 1.5rem;
+    }
+
+    /* Grid Layout */
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+      gap: 1.5rem;
+    }
+
+    /* Admin Panel Card Style */
+    .card {
+      background-color: var(--card-bg);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+      box-shadow: 0 4px 6px rgba(0, 0, 0, 0.3);
+      transition: transform 0.2s ease, box-shadow 0.2s ease;
+    }
+
+    .card:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 6px 12px rgba(0, 0, 0, 0.5);
+      border-color: var(--accent);
+    }
+
+    .card-header {
+      padding: 1rem;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      gap: 1rem;
+      background-color: rgba(255, 255, 255, 0.02);
+    }
+
+    .card-icon {
+      width: 48px;
+      height: 48px;
+      object-fit: contain;
+      border-radius: 4px;
+      background-color: #000;
+      padding: 4px;
+      border: 1px solid #333;
+    }
+
+    .card-title {
+      margin: 0;
+      font-size: 1.1rem;
+      font-weight: 600;
+    }
+
+    .card-body {
+      padding: 1rem;
+      flex: 1;
+    }
+
+    .stat-row {
+      display: flex;
+      justify-content: space-between;
+      margin-bottom: 0.5rem;
+      font-size: 0.9rem;
+    }
+
+    .stat-label {
+      color: var(--text-muted);
+    }
+
+    .stat-value {
+      font-weight: bold;
+      color: var(--accent);
+    }
+
+    .card-footer {
+      padding: 1rem;
+      border-top: 1px solid var(--border);
+      background-color: rgba(0, 0, 0, 0.2);
+    }
+
+    .btn {
+      width: 100%;
+      padding: 0.6rem;
+      border: none;
+      border-radius: 4px;
+      background-color: var(--accent);
+      color: white;
+      font-weight: 600;
+      cursor: pointer;
+      text-transform: uppercase;
+      font-size: 0.85rem;
+      transition: background-color 0.2s;
+    }
+
+    .btn:hover {
+      background-color: #357abd;
+    }
+
+    .btn:disabled {
+      background-color: #444;
+      cursor: not-allowed;
+      color: #888;
+    }
+
+    .badge {
+      display: inline-block;
+      padding: 0.25rem 0.5rem;
+      font-size: 0.75rem;
+      border-radius: 4px;
+      background-color: var(--border);
+      color: var(--text-muted);
+      margin-bottom: 0.5rem;
+    }
+
+    .desc {
+      font-size: 0.9rem;
+      line-height: 1.4;
+      color: var(--text-muted);
+    }
+
+    /* Highlight for Berserk */
+    .card.berserk {
+      border-left: 4px solid var(--danger);
+    }
+    
+    .plus-variant {
+      color: var(--warning);
+      font-size: 0.8rem;
+      margin-left: 0.5rem;
+    }
+  </style>
+</head>
+<body>
+
+  <h1>Bot Upgrade Station</h1>
+
+  <h2 class="section-title">Core Modules</h2>
+  <div id="core-modules" class="grid">
+    <!-- Core modules injected by JS -->
+  </div>
+
+  <h2 class="section-title">Berserk Upgrades</h2>
+  <div id="berserk-modules" class="grid">
+    <!-- Berserk modules injected by JS -->
+  </div>
+
+  <script>
+    // Configuration based on requirements
+    const STAT_MODULES = [
+      { key: "damage", name: "Damage Module", base: 7.5, unit: "% Damage" },
+      { key: "health", name: "Health Module", base: 7.5, unit: "% Health" },
+      { key: "armor", name: "Armour Module", base: 7.5, unit: "% Damage Taken", inverse: true }, // Inverse logic handled in display
+      { key: "speed", name: "Speed Module", base: 10, unit: "% Speed" }
+    ];
+
+    const BERSERKS = [
+      {
+        key: "elemental",
+        tier: 2,
+        name: "Elemental Module Tier 2",
+        description: "-10% health.<br>+10% Elemental Damage.",
+      },
+      {
+        key: "freeze",
+        tier: 4,
+        name: "Freeze Module Tier 4",
+        description: "Freeze enemy for 5 seconds (no move/shoot).<br>Self-inflicts 40 damage on use.",
+      },
+      {
+        key: "striker",
+        tier: 6,
+        name: "Striker Module Tier 6",
+        description: "3x Fire Rate for 5s.<br>+30% Damage Taken while active.",
+      },
+      {
+        key: "golden",
+        tier: 7,
+        name: "Golden Module Tier 7",
+        description: "90% Deflection Chance.<br>40% Reflect Chance (0.5x dmg).<br>-40% Movement Speed.<br>-30% Fire Rate.<br>Lasts 7 seconds.",
+      }
+    ];
+
+    // Math Helper: "Each tier = Double the previous" + "Plus variant adds 2.5%"
+    function calculateStat(base, tier, isPlus) {
+      // Base doubling logic: Base * (2 ^ (Tier - 1))
+      const doubled = base * Math.pow(2, tier - 1);
+      // Plus logic: Add 2.5% flat
+      const extra = isPlus ? 2.5 : 0;
+      return doubled + extra;
+    }
+
+    function render() {
+      const coreContainer = document.getElementById('core-modules');
+      const berserkContainer = document.getElementById('berserk-modules');
+
+      // Render Core Modules (Demoing Tier 1 stats vs Tier 1+)
+      STAT_MODULES.forEach(mod => {
+        const card = document.createElement('div');
+        card.className = 'card';
+        
+        // Calculate generic Tier 1 values for display
+        const valT1 = calculateStat(mod.base, 1, false);
+        const valT1Plus = calculateStat(mod.base, 1, true);
+        
+        const sign = mod.inverse ? '-' : '+';
+
+        card.innerHTML = `
+          <div class="card-header">
+            <img src="compressed-images/${mod.key}.png" alt="${mod.name}" class="card-icon" onerror="this.src='https://placehold.co/48x48/333/fff?text=${mod.key[0].toUpperCase()}'">
+            <h3 class="card-title">${mod.name}</h3>
+          </div>
+          <div class="card-body">
+            <div class="stat-row">
+              <span class="stat-label">Tier 1 Effect</span>
+              <span class="stat-value">${sign}${valT1}${mod.unit}</span>
+            </div>
+            <div class="stat-row">
+              <span class="stat-label">Tier 1+ Effect</span>
+              <span class="stat-value" style="color:var(--warning)">${sign}${valT1Plus}${mod.unit}</span>
+            </div>
+            <p class="desc">Upgrades double in power every tier. Plus variants add a flat 2.5%.</p>
+          </div>
+          <div class="card-footer">
+            <button class="btn">Upgrade</button>
+          </div>
+        `;
+        coreContainer.appendChild(card);
+      });
+
+      // Render Berserk Modules
+      BERSERKS.forEach(mod => {
+        const card = document.createElement('div');
+        card.className = 'card berserk';
+        card.innerHTML = `
+          <div class="card-header">
+            <img src="compressed-images/${mod.key}.png" alt="${mod.name}" class="card-icon" onerror="this.src='https://placehold.co/48x48/522/fff?text=${mod.key[0].toUpperCase()}'">
+            <h3 class="card-title">${mod.name}</h3>
+          </div>
+          <div class="card-body">
+            <span class="badge">Tier ${mod.tier} Exclusive</span>
+            <p class="desc">${mod.description}</p>
+          </div>
+          <div class="card-footer">
+            <button class="btn">Unlock</button>
+          </div>
+        `;
+        berserkContainer.appendChild(card);
+      });
+    }
+
+    // Run
+    render();
+  </script>
+</body>
+</html>
