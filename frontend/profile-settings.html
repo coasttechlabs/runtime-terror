@@ -960,14 +960,17 @@
     function loadLocalState() {
       try {
         const raw = localStorage.getItem(getStorageKey());
-        if (!raw) return { money: 0, modules: { damage: 0, health: 0, armor: 0, speed: 0 }, berserks: [] };
+        if (!raw) return { money: 0, modules: { damage: 0, health: 0, armor: 0, speed: 0 }, berserks: [], equippedBerserk: null };
         const data = JSON.parse(raw);
         if (!data.modules) data.modules = { damage: 0, health: 0, armor: 0, speed: 0 };
         if (!data.berserks) data.berserks = [];
+        if (typeof data.equippedBerserk === 'undefined' || data.equippedBerserk === null) {
+          data.equippedBerserk = data.berserks.length > 0 ? data.berserks[0] : null;
+        }
         if (typeof data.money !== 'number') data.money = 0;
         return data;
       } catch (e) {
-        return { money: 0, modules: { damage: 0, health: 0, armor: 0, speed: 0 }, berserks: [] };
+        return { money: 0, modules: { damage: 0, health: 0, armor: 0, speed: 0 }, berserks: [], equippedBerserk: null };
       }
     }
 
@@ -1090,6 +1093,7 @@
 
       BERSERKS.forEach(mod => {
         const owned = state.berserks.includes(mod.key);
+        const equipped = state.equippedBerserk === mod.key;
         const unlocked = highestOwned >= mod.tier;
         const cost = mod.cost || 9999;
         const canAfford = state.money >= cost;
@@ -1097,9 +1101,9 @@
         const card = document.createElement('div');
         card.className = 'upgrade-card berserk-card';
 
-        let buttonLabel = owned ? "Installed" : unlocked ? `Buy ($${cost})` : `Locked (Need Tier ${mod.tier})`;
-        let btnClass = owned ? "action-btn" : (unlocked && canAfford) ? "action-btn primary" : "action-btn";
-        let disabled = owned || !unlocked || !canAfford;
+        let buttonLabel = equipped ? "Equipped" : owned ? "Equip" : unlocked ? `Buy ($${cost})` : `Locked (Need Tier ${mod.tier})`;
+        let btnClass = equipped ? "action-btn" : owned ? "action-btn primary" : (unlocked && canAfford) ? "action-btn primary" : "action-btn";
+        let disabled = equipped || (!owned && (!unlocked || !canAfford));
 
         card.innerHTML = `
           <div class="upgrade-card-header">
@@ -1118,13 +1122,17 @@
           </div>
         `;
 
-        if (!owned && unlocked) {
+        if (!equipped && (owned || unlocked)) {
           const btn = card.querySelector('button');
           if (btn) {
             btn.addEventListener('click', () => {
-              if (state.money >= cost) {
+              if (owned) {
+                state.equippedBerserk = mod.key;
+                saveLocalState(state);
+              } else if (state.money >= cost) {
                 state.money -= cost;
                 state.berserks.push(mod.key);
+                state.equippedBerserk = mod.key;
                 saveLocalState(state);
               }
             });

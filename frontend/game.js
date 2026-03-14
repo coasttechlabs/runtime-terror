@@ -5,7 +5,7 @@ const STORAGE_KEY_BASE = "runtime-terror-solo-save-v2";
 let currentStorageKey = STORAGE_KEY_BASE;
 const TICK_MS = 16;
 const BASE_HEALTH = 250;
-const BASE_MOVE_SPEED = 180;
+const BASE_MOVE_SPEED = 40;
 
 const MODULES = [
   { key: "damage", name: "Damage Module", baseBonus: 7.5, format: (value) => `+${value}% damage` },
@@ -254,6 +254,7 @@ function defaultState() {
       speed: 0,
     },
     berserks: [],
+    equippedBerserk: null,
     salvage: [],
   };
 }
@@ -263,7 +264,7 @@ function loadState() {
     const raw = window.localStorage.getItem(currentStorageKey);
     if (!raw) return defaultState();
     const parsed = JSON.parse(raw);
-    return {
+    const loaded = {
       ...defaultState(),
       ...parsed,
       modules: {
@@ -273,6 +274,10 @@ function loadState() {
       berserks: Array.isArray(parsed.berserks) ? parsed.berserks : [],
       salvage: Array.isArray(parsed.salvage) ? parsed.salvage : [],
     };
+    if (!loaded.equippedBerserk && loaded.berserks.length > 0) {
+      loaded.equippedBerserk = loaded.berserks[0];
+    }
+    return loaded;
   } catch (_error) {
     return defaultState();
   }
@@ -330,7 +335,7 @@ function getPlayerProfile() {
   const healthBonus = getModulePercent(state.modules.health, 7.5);
   const armorBonus = getModulePercent(state.modules.armor, 7.5);
   const speedBonus = getModulePercent(state.modules.speed, 10);
-  const hasElemental = state.berserks.includes("elemental");
+  const hasElemental = state.equippedBerserk === "elemental";
 
   const healthMultiplier = (1 + healthBonus / 100) * (hasElemental ? 0.9 : 1);
   return {
@@ -439,7 +444,7 @@ function startBattle() {
     name: playerProfile.bot.name,
     color: playerProfile.bot.color,
     ...playerProfile,
-    berserks: state.berserks,
+    berserks: state.equippedBerserk ? [state.equippedBerserk] : [],
     attackImpl: playerProfile.bot.attack,
     abilityImpl: playerProfile.bot.ability,
     x: 220,
@@ -944,22 +949,28 @@ function renderShops() {
   dom.berserkShop.replaceChildren();
   BERSERKS.forEach((berserk) => {
     const owned = state.berserks.includes(berserk.key);
+    const equipped = state.equippedBerserk === berserk.key;
     const unlocked = highestOwnedTier() >= berserk.tier;
     const card = document.createElement("article");
     card.className = "berserk";
     card.innerHTML = `
-      <span class="badge">${owned ? "Owned" : unlocked ? "Unlocked" : `Needs Tier ${berserk.tier}`}</span>
+      <span class="badge">${equipped ? "Equipped" : owned ? "Owned" : unlocked ? "Unlocked" : `Needs Tier ${berserk.tier}`}</span>
       <h4>${berserk.name}</h4>
       <p class="meta">${berserk.description}</p>
       <p class="meta">Cost: $${berserk.cost}</p>
     `;
     const button = document.createElement("button");
     button.type = "button";
-    button.textContent = owned ? "Installed" : "Buy Module";
-    button.disabled = owned || !unlocked || state.money < berserk.cost || Boolean(battle);
+    button.textContent = equipped ? "Equipped" : owned ? "Equip" : "Buy Module";
+    button.disabled = equipped || (!owned && (!unlocked || state.money < berserk.cost)) || Boolean(battle);
     button.addEventListener("click", () => {
-      state.money -= berserk.cost;
-      state.berserks = [...state.berserks, berserk.key];
+      if (owned) {
+        state.equippedBerserk = berserk.key;
+      } else {
+        state.money -= berserk.cost;
+        state.berserks = [...state.berserks, berserk.key];
+        state.equippedBerserk = berserk.key;
+      }
       saveState();
       syncStaticUi();
       renderShops();
@@ -1013,7 +1024,7 @@ function syncBattleUi() {
     `Armour ${playerProfile.armorBonus.toFixed(1)}%`,
     `Speed ${playerProfile.speedBonus.toFixed(1)}%`,
     `Elemental ${playerProfile.elementalDamage}`,
-    `Berserks ${state.berserks.length}`,
+    `Berserk ${state.equippedBerserk || 'None'}`,
     ]));
   }
 
@@ -1172,6 +1183,7 @@ function autoSpendMoney() {
     if (berserkOption) {
       state.money -= berserkOption.cost;
       state.berserks = [...state.berserks, berserkOption.key];
+      state.equippedBerserk = berserkOption.key;
       changed = true;
       purchased = true;
     }
