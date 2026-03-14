@@ -603,6 +603,7 @@
           <div class="actions">
             <button id="save-profile-btn" class="action-btn primary" type="button">Save</button>
             <button id="change-password-btn" class="action-btn" type="button">Change Password</button>
+            <button id="reset-progress-btn" class="action-btn" type="button" style="grid-column: 1 / -1; color: #ff8f8f; border-color: rgba(255, 143, 143, 0.4);">Reset Game Progress</button>
           </div>
         </form>
       </section>
@@ -653,6 +654,7 @@
     const tutorialCompletedInput = document.getElementById("tutorial-completed");
     const saveProfileButton = document.getElementById("save-profile-btn");
     const changePasswordButton = document.getElementById("change-password-btn");
+    const resetProgressButton = document.getElementById("reset-progress-btn");
     const rankValue = document.getElementById("profile-rank");
     const roleValue = document.getElementById("profile-role");
     const levelValue = document.getElementById("profile-level");
@@ -756,6 +758,7 @@
       tutorialCompletedInput.disabled = disabled;
       saveProfileButton.disabled = disabled;
       changePasswordButton.disabled = disabled;
+      resetProgressButton.disabled = disabled;
     }
 
     function setStatus(message, type = "") {
@@ -1240,6 +1243,18 @@
         setProfileStatus(error?.message || "Failed to send password reset email.", "err");
       } finally {
         changePasswordButton.disabled = false;
+      }
+    });
+
+    resetProgressButton.addEventListener("click", () => {
+      if (confirm("Are you sure you want to reset all game progress? This will revert your money, modules, and unlocks to zero. This cannot be undone.")) {
+        const state = {
+          money: 0, modules: { damage: 0, health: 0, armor: 0, speed: 0 },
+          berserks: [], equippedBerserk: null, salvage: [],
+          encounter: 1, difficultyLevel: 0, consecutiveLosses: 0, wins: 0, losses: 0
+        };
+        saveLocalState(state);
+        setProfileStatus("Game progress has been reset.", "ok");
       }
     });
 

@@ -79,6 +79,7 @@ const PLAYER_BOT_TYPES = [
     color: "#1E90FF", // Blue
     abilityName: "System Hack",
     abilityCooldown: 10,
+    maxAbilityUses: 2,
     attackName: "bullet",
     attack: playerAttack, // Normal shot
     ability: hackerAbility,
@@ -145,11 +146,15 @@ const BOT_TYPES = [
     cooldown: 1,
     color: "#1E90FF",
     attackName: "bullet",
+    abilityName: "System Hack",
+    abilityCooldown: 10,
+    maxAbilityUses: 2,
     unique6: "HyperThreadingTechnology",
     unique6Description: "Hack lasts 2 more seconds and deals 20 more damage.",
     unique7: "Hyper Efficient Coding",
     unique7Description: "75% chance to chain a weaker second hack.",
     attack: playerAttack, // Uses bullets as primary
+    ability: hackerAbility,
   },
   {
     key: "sniper",
@@ -172,11 +177,14 @@ const BOT_TYPES = [
     cooldown: 1,
     color: "#FFD700",
     attackName: "standard shot",
+    abilityName: "Detonate",
+    abilityCooldown: 12,
     unique6: "Optimized Explosion Spreads",
     unique6Description: "Explosion coverage improves, adding 15 damage.",
     unique7: "Fire Infused Explosions",
     unique7Description: "Adds fire damage over time and reduces enemy armour.",
     attack: playerAttack, // Uses bullets as primary
+    ability: claymoreAbility,
   },
 ];
 
@@ -357,6 +365,7 @@ function getPlayerProfile() {
     shotDamage,
     abilityDamage,
     abilityCooldown: playerBot.abilityCooldown,
+    maxAbilityUses: playerBot.maxAbilityUses,
     elementalDamage: hasElemental ? roundNumber(baseDamage * 0.1) : 0,
     cooldown: baseCooldown / (1 + speedBonus / 100),
   };
@@ -367,7 +376,7 @@ function getEnemyBlueprint() {
   const bot = BOT_TYPES[Math.floor(Math.random() * BOT_TYPES.length)];
   const moduleLevels = { damage: 0, health: 0, armor: 0, speed: 0 };
   const moduleKeys = Object.keys(moduleLevels);
-  const modulePoints = Math.min(32, stage + Math.floor(stage / 2));
+  const modulePoints = Math.min(56, stage);
 
   for (let index = 0; index < modulePoints; index += 1) {
     const key = moduleKeys[index % moduleKeys.length];
@@ -383,6 +392,9 @@ function getEnemyBlueprint() {
   const hasAbility = bot.abilityDamage > 0;
   const baseDamage = hasAbility ? bot.damage : roundNumber(bot.damage * (1 + damageBonus / 100));
   const abilityDamage = hasAbility ? roundNumber(bot.abilityDamage * (1 + damageBonus / 100)) : 0;
+  const berserks = BERSERKS.filter((item) => difficultyTier >= item.tier).map((item) => item.key);
+  const hasElemental = berserks.includes("elemental");
+  const healthMultiplier = (1 + healthBonus / 100) * (hasElemental ? 0.9 : 1);
 
   return {
     bot,
@@ -393,13 +405,17 @@ function getEnemyBlueprint() {
     healthBonus,
     armorBonus,
     speedBonus,
-    maxHealth: roundNumber(BASE_HEALTH * (1 + healthBonus / 100)),
+    maxHealth: roundNumber(BASE_HEALTH * healthMultiplier),
     baseDamage,
     abilityDamage,
+    elementalDamage: hasElemental ? roundNumber(baseDamage * 0.1) : 0,
     cooldown: bot.cooldown / (1 + speedBonus / 100),
-    berserks: BERSERKS.filter((item) => difficultyTier >= item.tier).map((item) => item.key),
+    berserks,
     unique6: difficultyTier >= 6,
     unique7: difficultyTier >= 7,
+    abilityImpl: bot.ability,
+    abilityCooldown: bot.abilityCooldown || 0,
+    maxAbilityUses: bot.maxAbilityUses,
   };
 }
 
@@ -420,6 +436,8 @@ function createActor(kind, config) {
     cooldownRemaining: 0,
     abilityImpl: config.abilityImpl,
     abilityCooldownDuration: config.abilityCooldown || 0,
+    maxAbilityUses: config.maxAbilityUses || Infinity,
+    abilityUses: 0,
     abilityCooldownRemaining: 0,
     freezeFor: 0,
     disableFor: 0,
@@ -474,12 +492,15 @@ function startBattle() {
     maxHealth: enemyBlueprint.maxHealth,
     shotDamage: enemyBlueprint.baseDamage,
     abilityDamage: enemyBlueprint.abilityDamage,
-    elementalDamage: 0,
+    elementalDamage: enemyBlueprint.elementalDamage,
     armorBonus: enemyBlueprint.armorBonus,
     speedBonus: enemyBlueprint.speedBonus,
     cooldown: enemyBlueprint.cooldown,
     berserks: enemyBlueprint.berserks,
     attackImpl: enemyBlueprint.bot.attack,
+    abilityImpl: enemyBlueprint.abilityImpl,
+    abilityCooldown: enemyBlueprint.abilityCooldown,
+    maxAbilityUses: enemyBlueprint.maxAbilityUses,
     unique6: enemyBlueprint.unique6,
     unique7: enemyBlueprint.unique7,
     x: 900,
@@ -499,6 +520,8 @@ function startBattle() {
   // Add a one second delay before shooting bullets, including at the start of the match
   player.cooldownRemaining = 1;
   enemy.cooldownRemaining = 1;
+  player.abilityCooldownRemaining = 1;
+  enemy.abilityCooldownRemaining = 2;
 
   pushLog(`Encounter ${state.encounter} started. ${enemy.name} enters on ${getDifficultyLabel(state.difficultyLevel)} difficulty.`);
   applyPassiveBerserks(player);
@@ -630,9 +653,17 @@ function tickBattle() {
     enemy.cooldownRemaining = Math.max(0, enemy.cooldownRemaining - delta);
   }
 
+  if (enemy.abilityCooldownRemaining > 0) {
+    enemy.abilityCooldownRemaining = Math.max(0, enemy.abilityCooldownRemaining - delta);
+  }
+
   if (!isDisabled(enemy) && enemy.cooldownRemaining <= 0) {
     enemy.attackImpl(enemy, player);
     enemy.cooldownRemaining = getEffectiveCooldown(enemy);
+  }
+
+  if (!isDisabled(enemy) && enemy.abilityCooldownRemaining <= 0) {
+    handleEnemyAbility(enemy, player);
   }
 
   if (player.health <= 0) {
@@ -907,8 +938,13 @@ function handlePlayerAbility() {
   if (!player.abilityImpl && !hasBerserkAbility) return;
   
   if (player.abilityImpl) {
-    player.abilityImpl(player, enemy);
-    pushLog(`${player.name} used ability.`);
+    if (player.abilityUses >= player.maxAbilityUses) {
+      pushLog(`${player.name} tried to use ability, but maximum uses reached.`);
+    } else {
+      player.abilityImpl(player, enemy);
+      player.abilityUses += 1;
+      pushLog(`${player.name} used ability.`);
+    }
   }
 
   // Berserk Active Triggers
@@ -930,6 +966,39 @@ function handlePlayerAbility() {
 
   player.abilityCooldownRemaining = Math.max(player.abilityCooldownDuration, hasBerserkAbility && player.abilityCooldownDuration === 0 ? 12 : 0);
   syncBattleUi();
+}
+
+function handleEnemyAbility(enemy, player) {
+  const hasBerserkAbility = enemy.berserks.some(k => ["freeze", "striker", "golden"].includes(k));
+  if (!enemy.abilityImpl && !hasBerserkAbility) return;
+  
+  if (enemy.abilityImpl) {
+    if (enemy.abilityUses >= enemy.maxAbilityUses) {
+      // Enemy skips innate ability if out of uses, but active berserks might still trigger
+    } else {
+      enemy.abilityImpl(enemy, player);
+      enemy.abilityUses += 1;
+      pushLog(`${enemy.name} used ability.`);
+    }
+  }
+
+  if (enemy.berserks.includes("freeze")) {
+    player.freezeFor = Math.max(player.freezeFor, 5);
+    applyDamage(enemy, 40, "Freeze Module Self-Damage", enemy.name, { projectile: false });
+    pushLog(`Enemy Freeze Module active: You are frozen 5s, enemy takes 40 self-damage.`);
+  }
+
+  if (enemy.berserks.includes("striker")) {
+    enemy.strikerModeFor = 5;
+    pushLog(`Enemy Striker Module active: 3x Fire Rate, +30% Incoming Dmg for 5s.`);
+  }
+
+  if (enemy.berserks.includes("golden")) {
+    enemy.goldenModeFor = 7;
+    pushLog(`Enemy Golden Module active: Deflection/Reflection up, Speed/FireRate down for 7s.`);
+  }
+
+  enemy.abilityCooldownRemaining = Math.max(enemy.abilityCooldownDuration, hasBerserkAbility && enemy.abilityCooldownDuration === 0 ? 12 : 0);
 }
 
 function renderShops() {
