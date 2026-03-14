@@ -4,7 +4,7 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/f
 const STORAGE_KEY_BASE = "runtime-terror-solo-save-v2";
 let currentStorageKey = STORAGE_KEY_BASE;
 const TICK_MS = 16;
-const BASE_HEALTH = 150;
+const BASE_HEALTH = 250;
 const BASE_MOVE_SPEED = 180;
 
 const MODULES = [
