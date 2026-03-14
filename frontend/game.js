@@ -268,6 +268,7 @@ function defaultState() {
     berserks: [],
     equippedBerserk: null,
     salvage: [],
+    equippedUniques: {},
   };
 }
 
@@ -285,6 +286,7 @@ function loadState() {
       },
       berserks: Array.isArray(parsed.berserks) ? parsed.berserks : [],
       salvage: Array.isArray(parsed.salvage) ? parsed.salvage : [],
+      equippedUniques: parsed.equippedUniques || {},
     };
     if (!loaded.equippedBerserk && loaded.berserks.length > 0) {
       loaded.equippedBerserk = loaded.berserks[0];
@@ -340,6 +342,7 @@ function getModuleUpgradeCost(nextLevel) {
 
 function getPlayerProfile() {
   const playerBot = PLAYER_BOT_TYPES.find((b) => b.key === state.playerBotKey) || PLAYER_BOT_TYPES[0];
+  const equippedUnique = state.equippedUniques[playerBot.key];
   const baseDamage = playerBot.damage;
   const baseCooldown = playerBot.cooldown;
 
@@ -368,6 +371,8 @@ function getPlayerProfile() {
     maxAbilityUses: playerBot.maxAbilityUses,
     elementalDamage: hasElemental ? roundNumber(baseDamage * 0.1) : 0,
     cooldown: baseCooldown / (1 + speedBonus / 100),
+    unique6: equippedUnique === "6",
+    unique7: equippedUnique === "7",
   };
 }
 
@@ -484,6 +489,8 @@ function startBattle() {
     x: 220,
     y: 420,
     moveSpeed: BASE_MOVE_SPEED * (1 + playerProfile.speedBonus / 100),
+    unique6: playerProfile.unique6,
+    unique7: playerProfile.unique7,
   });
   const enemy = createActor("enemy", {
     key: enemyBlueprint.bot.key,
@@ -567,7 +574,7 @@ function endBattle(result) {
   }
 
   state.money += Math.floor(reward);
-  maybeGrantSalvage(result);
+  const salvageMsg = maybeGrantSalvage(result);
   state.encounter += 1;
   saveState();
 
@@ -582,12 +589,13 @@ function endBattle(result) {
   // Show Game Over Screen
   if (dom.gameOverScreen) {
     dom.gameOverScreen.classList.remove("hidden");
+    const extraMsg = salvageMsg ? `\n\n${salvageMsg}` : "";
     if (result === "win") {
       setText(dom.gameOverTitle, "VICTORY");
-      setText(dom.gameOverMessage, `You defeated ${enemy.name}! Reward: $${Math.floor(reward)}`);
+      setText(dom.gameOverMessage, `You defeated ${enemy.name}! Reward: $${Math.floor(reward)}${extraMsg}`);
     } else {
       setText(dom.gameOverTitle, "DEFEAT");
-      setText(dom.gameOverMessage, `You were destroyed by ${enemy.name}. Salvage: $${Math.floor(reward)}`);
+      setText(dom.gameOverMessage, `You were destroyed by ${enemy.name}. Salvage: $${Math.floor(reward)}${extraMsg}`);
     }
   }
 }
@@ -603,24 +611,28 @@ function calculateLossReward(baseReward, damagePercent) {
 
 function maybeGrantSalvage(result) {
   const difficulty = getDifficultyLabel(state.difficultyLevel);
-  if (!difficulty.startsWith("Tier 7")) return;
-  if (!battle) return;
+  if (!difficulty.startsWith("Tier 7")) return null;
+  if (!battle) return null;
 
+  let msg = null;
   const bot = battle.enemyBlueprint.bot;
   if (Math.random() <= 0.01) {
     const code = `${bot.key}:6`;
     if (!state.salvage.includes(code)) {
       state.salvage.push(code);
-      pushLog(`Salvage found${result === "loss" ? " despite the loss" : ""}: ${bot.unique6}.`);
+      msg = `Salvage found${result === "loss" ? " despite the loss" : ""}: ${bot.unique6} (Tier 6)!`;
+      pushLog(msg);
     }
   }
-  if (Math.random() <= 0.005) {
+  if (!msg && Math.random() <= 0.005) {
     const code = `${bot.key}:7`;
     if (!state.salvage.includes(code)) {
       state.salvage.push(code);
-      pushLog(`Rare salvage found: ${bot.unique7}.`);
+      msg = `Rare salvage found: ${bot.unique7} (Tier 7)!`;
+      pushLog(msg);
     }
   }
+  return msg;
 }
 
 function tickBattle() {
@@ -1080,12 +1092,29 @@ function renderInventory() {
   state.salvage.forEach((code) => {
     const [botKey, tier] = code.split(":");
     const bot = BOT_TYPES.find((item) => item.key === botKey);
+    const equipped = state.equippedUniques[botKey] === tier;
     const card = document.createElement("article");
-    card.className = "inventory-item";
+    card.className = "inventory-item berserk";
     card.innerHTML = `
+      <span class="badge" style="background:#ffb74d;color:#000;">${equipped ? "Equipped" : "Owned"}</span>
       <h4>${bot ? bot.name : botKey} - Tier ${tier}</h4>
       <p class="meta">${tier === "6" ? bot?.unique6Description || "" : bot?.unique7Description || ""}</p>
     `;
+    const button = document.createElement("button");
+    button.type = "button";
+    button.textContent = equipped ? "Unequip" : "Equip";
+    button.disabled = Boolean(battle);
+    button.addEventListener("click", () => {
+      if (equipped) {
+        state.equippedUniques[botKey] = null;
+      } else {
+        state.equippedUniques[botKey] = tier;
+      }
+      saveState();
+      syncStaticUi();
+      renderInventory();
+    });
+    card.appendChild(button);
     dom.uniqueInventory.appendChild(card);
   });
 }

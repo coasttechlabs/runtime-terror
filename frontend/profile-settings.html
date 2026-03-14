@@ -455,6 +455,10 @@
 
     .berserk-card { border-left: 3px solid #ff4d4d; }
     .berserk-card .upgrade-stat-value { color: #ff4d4d; }
+    
+    .special-card { border-left: 3px solid #ffb74d; }
+    .special-card .upgrade-stat-value { color: #ffb74d; }
+    .special-card.locked { opacity: 0.6; filter: grayscale(80%); }
 
     @media (max-width: 760px) {
       .site-header {
@@ -630,6 +634,8 @@
         <div id="core-modules" class="upgrade-grid"></div>
         <h2 class="section-header">Berserk Upgrades</h2>
         <div id="berserk-modules" class="upgrade-grid"></div>
+        <h2 class="section-header">Special Modules</h2>
+        <div id="special-modules" class="upgrade-grid"></div>
       </section>
     </section>
   </main>
@@ -963,7 +969,7 @@
     function loadLocalState() {
       try {
         const raw = localStorage.getItem(getStorageKey());
-        if (!raw) return { money: 0, modules: { damage: 0, health: 0, armor: 0, speed: 0 }, berserks: [], equippedBerserk: null };
+        if (!raw) return { money: 0, modules: { damage: 0, health: 0, armor: 0, speed: 0 }, berserks: [], equippedBerserk: null, salvage: [], equippedUniques: {} };
         const data = JSON.parse(raw);
         if (!data.modules) data.modules = { damage: 0, health: 0, armor: 0, speed: 0 };
         if (!data.berserks) data.berserks = [];
@@ -971,9 +977,11 @@
           data.equippedBerserk = data.berserks.length > 0 ? data.berserks[0] : null;
         }
         if (typeof data.money !== 'number') data.money = 0;
+        if (!data.salvage) data.salvage = [];
+        if (!data.equippedUniques) data.equippedUniques = {};
         return data;
       } catch (e) {
-        return { money: 0, modules: { damage: 0, health: 0, armor: 0, speed: 0 }, berserks: [], equippedBerserk: null };
+        return { money: 0, modules: { damage: 0, health: 0, armor: 0, speed: 0 }, berserks: [], equippedBerserk: null, salvage: [], equippedUniques: {} };
       }
     }
 
@@ -1016,6 +1024,7 @@
     function renderUpgrades() {
       const coreContainer = document.getElementById('core-modules');
       const berserkContainer = document.getElementById('berserk-modules');
+      const specialContainer = document.getElementById('special-modules');
       
       if (!coreContainer || !berserkContainer) return;
       
@@ -1023,6 +1032,7 @@
 
       coreContainer.innerHTML = "";
       berserkContainer.innerHTML = "";
+      if (specialContainer) specialContainer.innerHTML = "";
 
       STAT_MODULES.forEach(mod => {
         const currentLevel = state.modules[mod.key] || 0;
@@ -1144,6 +1154,67 @@
 
         berserkContainer.appendChild(card);
       });
+
+      const SPECIAL_MODULES = [
+        { key: "acid:6", botKey: "acid", botName: "Acid Bot", tier: "6", name: "Smart Acid", desc: "Missed acid crawls back toward the enemy." },
+        { key: "acid:7", botKey: "acid", botName: "Acid Bot", tier: "7", name: "Virus Acid", desc: "10% chance every 2s to disable target controls for 3s." },
+        { key: "sawblade:6", botKey: "sawblade", botName: "Swinging Sawblade Bot", tier: "6", name: "Improved Motors", desc: "Swinging arm moves 2.5x faster." },
+        { key: "sawblade:7", botKey: "sawblade", botName: "Swinging Sawblade Bot", tier: "7", name: "Titanium Sharpening", desc: "Damage loss happens every 3 swings instead of every swing." },
+        { key: "hacker:6", botKey: "hacker", botName: "Hacking Bot", tier: "6", name: "HyperThreadingTechnology", desc: "Hack lasts 2 more seconds and deals 20 more damage." },
+        { key: "hacker:7", botKey: "hacker", botName: "Hacking Bot", tier: "7", name: "Hyper Efficient Coding", desc: "75% chance to chain a weaker second hack." },
+        { key: "sniper:6", botKey: "sniper", botName: "Sniper Bot", tier: "6", name: "Hyper Velocity", desc: "Adds 15 damage to each shot." },
+        { key: "sniper:7", botKey: "sniper", botName: "Sniper Bot", tier: "7", name: "Plasma Charged", desc: "Adds plasma damage and reduces enemy efficiency by 10%." },
+        { key: "claymore:6", botKey: "claymore", botName: "Claymore Roomba", tier: "6", name: "Optimized Explosion Spreads", desc: "Explosion coverage improves, adding 15 damage." },
+        { key: "claymore:7", botKey: "claymore", botName: "Claymore Roomba", tier: "7", name: "Fire Infused Explosions", desc: "Adds fire damage over time and reduces enemy armour." }
+      ];
+
+      if (specialContainer) {
+        SPECIAL_MODULES.forEach(mod => {
+          const owned = state.salvage.includes(mod.key);
+          const equipped = state.equippedUniques[mod.botKey] === mod.tier;
+          
+          const card = document.createElement('div');
+          card.className = `upgrade-card special-card ${owned ? '' : 'locked'}`;
+
+          let buttonLabel = equipped ? "Unequip" : owned ? "Equip" : "Locked";
+          let btnClass = equipped ? "action-btn" : owned ? "action-btn primary" : "action-btn";
+          let disabled = !owned;
+
+          card.innerHTML = `
+            <div class="upgrade-card-header">
+              <h3>${mod.name}</h3>
+            </div>
+            <div class="upgrade-body">
+              <div class="upgrade-stat-row">
+                <span class="upgrade-stat-label" style="color:#ffb74d">${mod.botName}</span>
+                <span class="upgrade-stat-value">Tier ${mod.tier}</span>
+              </div>
+              <div class="upgrade-desc">${owned ? mod.desc : "??? (Unlock by playing Tier 7+ difficulty)"}</div>
+              <div style="margin-top: 12px; display: grid;">
+                <button class="${btnClass}" ${disabled ? "disabled" : ""}>
+                  ${owned ? buttonLabel : '🔒 Locked'}
+                </button>
+              </div>
+            </div>
+          `;
+
+          if (owned) {
+            const btn = card.querySelector('button');
+            if (btn) {
+              btn.addEventListener('click', () => {
+                if (equipped) {
+                  state.equippedUniques[mod.botKey] = null;
+                } else {
+                  state.equippedUniques[mod.botKey] = mod.tier;
+                }
+                saveLocalState(state);
+              });
+            }
+          }
+
+          specialContainer.appendChild(card);
+        });
+      }
     }
 
     sideButtons.forEach((btn) => {
@@ -1250,7 +1321,7 @@
       if (confirm("Are you sure you want to reset all game progress? This will revert your money, modules, and unlocks to zero. This cannot be undone.")) {
         const state = {
           money: 0, modules: { damage: 0, health: 0, armor: 0, speed: 0 },
-          berserks: [], equippedBerserk: null, salvage: [],
+          berserks: [], equippedBerserk: null, salvage: [], equippedUniques: {},
           encounter: 1, difficultyLevel: 0, consecutiveLosses: 0, wins: 0, losses: 0
         };
         saveLocalState(state);
