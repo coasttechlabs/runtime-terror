@@ -74,6 +74,7 @@ const PLAYER_BOT_TYPES = [
     key: "hacker",
     name: "Hacking Bot",
     damage: 20, // Bullet damage
+    abilityDamage: 40,
     cooldown: 1, // 1 second delay
     color: "#1E90FF", // Blue
     abilityName: "System Hack",
@@ -98,6 +99,7 @@ const PLAYER_BOT_TYPES = [
     key: "claymore",
     name: "Claymore Roomba",
     damage: 20, // Bullet damage
+    abilityDamage: 65,
     cooldown: 1, // 1 second delay
     color: "#FFD700", // Yellow
     abilityName: "Detonate",
@@ -139,6 +141,7 @@ const BOT_TYPES = [
     key: "hacker",
     name: "Hacking Bot",
     damage: 20,
+    abilityDamage: 40,
     cooldown: 1,
     color: "#1E90FF",
     attackName: "bullet",
@@ -165,6 +168,7 @@ const BOT_TYPES = [
     key: "claymore",
     name: "Claymore Roomba",
     damage: 20,
+    abilityDamage: 65,
     cooldown: 1,
     color: "#FFD700",
     attackName: "standard shot",
@@ -338,6 +342,11 @@ function getPlayerProfile() {
   const hasElemental = state.equippedBerserk === "elemental";
 
   const healthMultiplier = (1 + healthBonus / 100) * (hasElemental ? 0.9 : 1);
+  
+  const hasAbility = Boolean(playerBot.ability);
+  const shotDamage = hasAbility ? baseDamage : roundNumber(baseDamage * (1 + damageBonus / 100));
+  const abilityDamage = hasAbility ? roundNumber((playerBot.abilityDamage || 0) * (1 + damageBonus / 100)) : 0;
+
   return {
     bot: playerBot,
     damageBonus,
@@ -345,7 +354,8 @@ function getPlayerProfile() {
     armorBonus,
     speedBonus,
     maxHealth: roundNumber(BASE_HEALTH * healthMultiplier),
-    shotDamage: roundNumber(baseDamage * (1 + damageBonus / 100)),
+    shotDamage,
+    abilityDamage,
     abilityCooldown: playerBot.abilityCooldown,
     elementalDamage: hasElemental ? roundNumber(baseDamage * 0.1) : 0,
     cooldown: baseCooldown / (1 + speedBonus / 100),
@@ -370,6 +380,10 @@ function getEnemyBlueprint() {
   const speedBonus = getModulePercent(moduleLevels.speed, 10);
   const difficultyTier = stage === 0 ? 0 : Math.min(7, Math.ceil(stage / 2));
 
+  const hasAbility = bot.abilityDamage > 0;
+  const baseDamage = hasAbility ? bot.damage : roundNumber(bot.damage * (1 + damageBonus / 100));
+  const abilityDamage = hasAbility ? roundNumber(bot.abilityDamage * (1 + damageBonus / 100)) : 0;
+
   return {
     bot,
     stage,
@@ -380,7 +394,8 @@ function getEnemyBlueprint() {
     armorBonus,
     speedBonus,
     maxHealth: roundNumber(BASE_HEALTH * (1 + healthBonus / 100)),
-    baseDamage: roundNumber(bot.damage * (1 + damageBonus / 100)),
+    baseDamage,
+    abilityDamage,
     cooldown: bot.cooldown / (1 + speedBonus / 100),
     berserks: BERSERKS.filter((item) => difficultyTier >= item.tier).map((item) => item.key),
     unique6: difficultyTier >= 6,
@@ -397,6 +412,7 @@ function createActor(kind, config) {
     health: config.maxHealth,
     color: config.color || "#ccc",
     shotDamage: config.shotDamage,
+    abilityDamage: config.abilityDamage || 0,
     elementalDamage: config.elementalDamage || 0,
     armorBonus: config.armorBonus || 0,
     speedBonus: config.speedBonus || 0,
@@ -457,6 +473,7 @@ function startBattle() {
     color: enemyBlueprint.bot.color,
     maxHealth: enemyBlueprint.maxHealth,
     shotDamage: enemyBlueprint.baseDamage,
+    abilityDamage: enemyBlueprint.abilityDamage,
     elementalDamage: 0,
     armorBonus: enemyBlueprint.armorBonus,
     speedBonus: enemyBlueprint.speedBonus,
@@ -795,7 +812,7 @@ function sawbladeAttack(attacker, defender) {
 
 // This is now the Ability for the Hacker bot, not primary fire
 function hackerAbility(attacker, defender) {
-  const damage = 40 + (attacker.unique6 ? 20 : 0);
+  const damage = attacker.abilityDamage + (attacker.unique6 ? 20 : 0);
   const disableTime = 5 + (attacker.unique6 ? 2 : 0);
   applyDamage(defender, damage, "hack spike", attacker.name, { projectile: false });
   defender.disableFor = Math.max(defender.disableFor, disableTime);
@@ -829,7 +846,7 @@ function sniperAttack(attacker, defender) {
 
 // This is now the Ability for Claymore, not primary fire
 function claymoreAbility(attacker, defender) {
-  let damage = 65 + (attacker.unique6 ? 15 : 0);
+  let damage = attacker.abilityDamage + (attacker.unique6 ? 15 : 0);
   applyDamage(defender, damage, "Explosion", attacker.name, { projectile: false });
   defender.armorBreak = Math.max(defender.armorBreak, attacker.unique7 ? 20 : 40);
   pushLog(`${defender.name}'s armour is compromised.`);
@@ -1018,14 +1035,20 @@ function syncStaticUi() {
 function syncBattleUi() {
   const playerProfile = getPlayerProfile();
   if (dom.playerStats) {
-    dom.playerStats.replaceChildren(...makeStats([
-    `Damage ${playerProfile.shotDamage}`,
-    `Health ${playerProfile.maxHealth}`,
-    `Armour ${playerProfile.armorBonus.toFixed(1)}%`,
-    `Speed ${playerProfile.speedBonus.toFixed(1)}%`,
-    `Elemental ${playerProfile.elementalDamage}`,
-    `Berserk ${state.equippedBerserk || 'None'}`,
-    ]));
+    const stats = [];
+    if (playerProfile.bot.ability) {
+      stats.push(`Gun Dmg ${playerProfile.shotDamage}`);
+      stats.push(`Ability Dmg ${playerProfile.abilityDamage}`);
+    } else {
+      stats.push(`Damage ${playerProfile.shotDamage}`);
+    }
+    stats.push(`Health ${playerProfile.maxHealth}`);
+    stats.push(`Armour ${playerProfile.armorBonus.toFixed(1)}%`);
+    stats.push(`Speed ${playerProfile.speedBonus.toFixed(1)}%`);
+    stats.push(`Elemental ${playerProfile.elementalDamage}`);
+    stats.push(`Berserk ${state.equippedBerserk || 'None'}`);
+
+    dom.playerStats.replaceChildren(...makeStats(stats));
   }
 
   if (!battle) {
@@ -1067,14 +1090,20 @@ function syncBattleUi() {
   setText(dom.playerStatus, getStatusLine(player));
   setText(dom.enemyStatus, getStatusLine(enemy));
   if (dom.enemyStats) {
-    dom.enemyStats.replaceChildren(...makeStats([
-      `${enemyBlueprint.bot.attackName}`,
-      `Damage ${enemy.shotDamage}`,
-      `Health ${enemy.maxHealth}`,
-      `Armour ${enemy.armorBonus.toFixed(1)}%`,
-      `Speed ${enemy.speedBonus.toFixed(1)}%`,
-      `${getDifficultyLabel(state.difficultyLevel)} enemy`,
-    ]));
+    const stats = [];
+    stats.push(`${enemyBlueprint.bot.attackName}`);
+    if (enemy.abilityDamage > 0) {
+      stats.push(`Gun Dmg ${enemy.shotDamage}`);
+      stats.push(`Ability Dmg ${enemy.abilityDamage}`);
+    } else {
+      stats.push(`Damage ${enemy.shotDamage}`);
+    }
+    stats.push(`Health ${enemy.maxHealth}`);
+    stats.push(`Armour ${enemy.armorBonus.toFixed(1)}%`);
+    stats.push(`Speed ${enemy.speedBonus.toFixed(1)}%`);
+    stats.push(`${getDifficultyLabel(state.difficultyLevel)} enemy`);
+
+    dom.enemyStats.replaceChildren(...makeStats(stats));
   }
   setDisabled(dom.fireButton, player.cooldownRemaining > 0 || isDisabled(player) || player.health <= 0 || enemy.health <= 0);
   setDisabled(
