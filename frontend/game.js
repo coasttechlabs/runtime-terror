@@ -221,7 +221,7 @@ const dom = {
   upgradeShop: document.querySelector("#upgrade-shop"),
   berserkShop: document.querySelector("#berserk-shop"),
   uniqueInventory: document.querySelector("#unique-inventory"),
-  profileButton: document.querySelector("#profile-button"),
+
 };
 
 let state = loadState();
@@ -1352,6 +1352,8 @@ function renderArena() {
     drawHudText(context, BASE_HEALTH, distanceUnits(playerX, playerY, enemyX, enemyY));
     drawBot(context, playerX, playerY, BASE_HEALTH, BASE_HEALTH, "#0000FF", now, { kind: "player", color: "#666" }); // Demo player
     drawBot(context, enemyX, enemyY, 200, 200, "#FF0000", now, { kind: "enemy", color: "#666" }); // Demo enemy
+    drawBot(context, playerX, playerY, BASE_HEALTH, BASE_HEALTH, "#0000FF", now, { kind: "player", key: "hacker", facing: 1, color: "#666" }); // Demo player
+    drawBot(context, enemyX, enemyY, 200, 200, "#FF0000", now, { kind: "enemy", key: "sawblade", facing: -1, color: "#666" }); // Demo enemy
     return;
   }
 
@@ -1385,30 +1387,80 @@ function drawHudText(context, hp, dist) {
   context.restore();
 }
 
+const imageCache = {};
+
+function getImage(actor) {
+  if (!actor || !actor.key) return null;
+  const botKey = actor.key;
+  if (imageCache[botKey]) return imageCache[botKey];
+  
+  const keyToImage = {
+    "acid": "NOBG-AcidBot.webp",
+    "sawblade": "NOBG-SawBladeBot.webp",
+    "hacker": "NOBG-HackingBot.webp",
+    "sniper": "NOBG-SniperBot.webp",
+    "claymore": "NOBGClaymoreRoombaBot.webp"
+  };
+
+  const filename = keyToImage[botKey];
+  if (!filename) return null;
+
+  const img = new Image();
+  img.src = `./compressed-images/${filename}`;
+  const paths = [
+    `./compressed-images/${filename}`,
+    `../compressed-images/${filename}`,
+    `/compressed-images/${filename}`
+  ];
+  let pathIndex = 0;
+  
+  img.onerror = () => {
+    pathIndex++;
+    if (pathIndex < paths.length) {
+      img.src = paths[pathIndex];
+    }
+  };
+
+  img.src = paths[pathIndex];
+  imageCache[botKey] = img;
+  return img;
+}
+
 function drawBot(context, x, y, health, maxHealth, identityColor, now, actor) {
   context.save();
   context.translate(x, y);
 
-  // Main Body Body
-  context.strokeStyle = actor.color || "#fff";
-  context.lineWidth = 6;
-  context.beginPath();
-  context.arc(0, 0, 40, 0, Math.PI * 2);
-  context.stroke();
+  const img = getImage(actor);
+  if (img && img.complete && img.naturalWidth > 0) {
+    if (actor.facing === -1) {
+      context.scale(-1, 1);
+    }
+    context.drawImage(img, -40, -40, 80, 80);
+    if (actor.facing === -1) {
+      context.scale(-1, 1);
+    }
+  } else {
+    // Main Body Body
+    context.strokeStyle = actor?.color || "#fff";
+    context.lineWidth = 6;
+    context.beginPath();
+    context.arc(0, 0, 40, 0, Math.PI * 2);
+    context.stroke();
 
-  // Inner Fill
-  context.fillStyle = actor.color || "#ccc";
-  context.beginPath();
-  context.arc(0, 0, 25, 0, Math.PI * 2);
-  context.fill();
+    // Inner Fill
+    context.fillStyle = actor?.color || "#ccc";
+    context.beginPath();
+    context.arc(0, 0, 25, 0, Math.PI * 2);
+    context.fill();
 
-  // Weapon/Facing Arm
-  context.strokeStyle = "rgba(15, 37, 255, 0.95)";
-  context.lineWidth = 4;
-  context.beginPath();
-  context.moveTo(0, 0);
-  context.lineTo(26 * (actor?.facing || 1), -26);
-  context.stroke();
+    // Weapon/Facing Arm
+    context.strokeStyle = "rgba(15, 37, 255, 0.95)";
+    context.lineWidth = 4;
+    context.beginPath();
+    context.moveTo(0, 0);
+    context.lineTo(26 * (actor?.facing || 1), -26);
+    context.stroke();
+  }
 
   // Identity Square (Blue = You, Red = Opponent)
   context.fillStyle = identityColor;
