@@ -1,5 +1,9 @@
 import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-auth.js";
-import { auth } from "./firebase.js";
+import {
+  doc,
+  onSnapshot,
+} from "https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore.js";
+import { auth, db } from "./firebase.js";
 import { getApiBase } from "./api-base.js";
 import {
   STORAGE_KEY_BASE,
@@ -16,8 +20,8 @@ const BASE_HEALTH = 100;
 const BASE_PLAYER_DAMAGE = 22;
 const BASE_PLAYER_COOLDOWN = 1.6;
 const BASE_MOVE_SPEED = 40;
-const MATCH_POLL_MS = 900;
-const MATCH_INPUT_MS = 140;
+const MATCH_FALLBACK_POLL_MS = 1800;
+const MATCH_INPUT_MS = 65;
 const FRIEND_INTERPOLATION = 0.18;
 const FRIEND_RECONCILE = 0.22;
 
@@ -162,11 +166,15 @@ let currentUser = null;
 let activeIdToken = "";
 let matchPollIntervalId = null;
 let matchInputIntervalId = null;
+let matchUnsubscribe = null;
 let currentMatchId = new URLSearchParams(window.location.search).get("match") || "";
 let currentMode = currentMatchId ? "friend" : "solo";
 let fireNonce = 0;
 let abilityNonce = 0;
 let lastArenaFrameAt = 0;
+let lastFriendInputSentAt = 0;
+let pendingFriendInputTimeoutId = null;
+let friendRealtimeReady = false;
 const inputState = {
   up: false,
   down: false,
@@ -251,6 +259,10 @@ function getPvpLoadoutSummary() {
 }
 
 function clearFriendMatchTimers() {
+  if (pendingFriendInputTimeoutId) {
+    window.clearTimeout(pendingFriendInputTimeoutId);
+    pendingFriendInputTimeoutId = null;
+  }
   if (matchPollIntervalId) {
     window.clearInterval(matchPollIntervalId);
     matchPollIntervalId = null;
@@ -259,6 +271,11 @@ function clearFriendMatchTimers() {
     window.clearInterval(matchInputIntervalId);
     matchInputIntervalId = null;
   }
+  if (matchUnsubscribe) {
+    matchUnsubscribe();
+    matchUnsubscribe = null;
+  }
+  friendRealtimeReady = false;
 }
 
 function friendMatchTitle(match) {
@@ -326,6 +343,25 @@ function updateFriendBattleFromMatch(match) {
   syncBattleUi();
 }
 
+function normalizeRealtimeMatch(data, matchId) {
+  if (!data || typeof data !== "object") return null;
+  return {
+    id: matchId,
+    challengeId: data.challengeId,
+    status: data.status,
+    playerAUid: data.playerAUid,
+    playerAUsername: data.playerAUsername,
+    playerBUid: data.playerBUid,
+    playerBUsername: data.playerBUsername,
+    winnerUid: data.winnerUid,
+    terminationReason: data.terminationReason,
+    createdAtMs: data.createdAtMs,
+    acceptedAtMs: data.acceptedAtMs,
+    completedAtMs: data.completedAtMs,
+    snapshot: data.snapshot,
+  };
+}
+
 async function fetchFriendMatch() {
   if (!currentMatchId || !currentUser) return;
   const payload = await apiRequest(`/matches/${encodeURIComponent(currentMatchId)}`);
@@ -335,6 +371,30 @@ async function fetchFriendMatch() {
   if (match.status !== "active") {
     clearFriendMatchTimers();
   }
+}
+
+function subscribeToFriendMatch() {
+  if (!currentMatchId || matchUnsubscribe) return;
+  const matchRef = doc(db, "friendMatches", currentMatchId);
+  matchUnsubscribe = onSnapshot(
+    matchRef,
+    (snapshot) => {
+      if (!snapshot.exists()) return;
+      const normalized = normalizeRealtimeMatch(snapshot.data(), snapshot.id);
+      if (!normalized) return;
+      friendRealtimeReady = true;
+      updateFriendBattleFromMatch(normalized);
+      if (normalized.status !== "active") {
+        if (matchInputIntervalId) {
+          window.clearInterval(matchInputIntervalId);
+          matchInputIntervalId = null;
+        }
+      }
+    },
+    (error) => {
+      console.error("Friend match realtime listener failed:", error);
+    }
+  );
 }
 
 async function sendFriendInput() {
@@ -365,6 +425,30 @@ async function sendFriendInput() {
   if (payload?.match) {
     updateFriendBattleFromMatch(payload.match);
   }
+  lastFriendInputSentAt = performance.now();
+}
+
+function scheduleFriendInputSend(immediate = false) {
+  if (currentMode !== "friend" || !currentUser || !currentMatchId) return;
+  if (immediate) {
+    if (pendingFriendInputTimeoutId) {
+      window.clearTimeout(pendingFriendInputTimeoutId);
+      pendingFriendInputTimeoutId = null;
+    }
+    sendFriendInput().catch((error) => {
+      console.error("Friend match input failed:", error);
+    });
+    return;
+  }
+  if (pendingFriendInputTimeoutId) return;
+  const elapsed = performance.now() - lastFriendInputSentAt;
+  const delay = Math.max(0, MATCH_INPUT_MS - elapsed);
+  pendingFriendInputTimeoutId = window.setTimeout(() => {
+    pendingFriendInputTimeoutId = null;
+    sendFriendInput().catch((error) => {
+      console.error("Friend match input failed:", error);
+    });
+  }, delay);
 }
 
 async function startFriendMatchMode() {
@@ -374,17 +458,17 @@ async function startFriendMatchMode() {
   }
   if (!currentUser) return;
   clearFriendMatchTimers();
+  subscribeToFriendMatch();
   await fetchFriendMatch();
-  matchPollIntervalId = window.setInterval(() => {
-    fetchFriendMatch().catch((error) => {
-      console.error("Friend match refresh failed:", error);
-    });
-  }, MATCH_POLL_MS);
   matchInputIntervalId = window.setInterval(() => {
-    sendFriendInput().catch((error) => {
-      console.error("Friend match input failed:", error);
-    });
+    scheduleFriendInputSend(false);
   }, MATCH_INPUT_MS);
+  matchPollIntervalId = window.setInterval(() => {
+    if (friendRealtimeReady) return;
+    fetchFriendMatch().catch((error) => {
+      console.error("Friend match fallback refresh failed:", error);
+    });
+  }, MATCH_FALLBACK_POLL_MS);
 }
 
 function getProgressionStage(encounter) {
@@ -987,6 +1071,7 @@ function handlePlayerFire() {
       battle.playerRender.cooldownRemaining = getEffectiveCooldown(battle.playerRender);
       syncBattleUi();
     }
+    scheduleFriendInputSend(true);
     return;
   }
   if (!battle) return;
@@ -1009,6 +1094,7 @@ function handlePlayerBerserk() {
       battle.playerRender.berserkState = battle.playerRender.berserkState || { key: "queued", name: "Activating...", remaining: 0.35 };
       syncBattleUi();
     }
+    scheduleFriendInputSend(true);
     return;
   }
   if (!battle) return;
@@ -1490,10 +1576,17 @@ function resizeArenaCanvas() {
 }
 
 function setInput(eventCode, pressed) {
+  let changed = false;
   if (eventCode === "KeyW" || eventCode === "ArrowUp") inputState.up = pressed;
   if (eventCode === "KeyS" || eventCode === "ArrowDown") inputState.down = pressed;
   if (eventCode === "KeyA" || eventCode === "ArrowLeft") inputState.left = pressed;
   if (eventCode === "KeyD" || eventCode === "ArrowRight") inputState.right = pressed;
+  if (eventCode === "KeyW" || eventCode === "ArrowUp" || eventCode === "KeyS" || eventCode === "ArrowDown" || eventCode === "KeyA" || eventCode === "ArrowLeft" || eventCode === "KeyD" || eventCode === "ArrowRight") {
+    changed = true;
+  }
+  if (changed && currentMode === "friend") {
+    scheduleFriendInputSend(false);
+  }
 }
 
 function tickArenaFrame() {
@@ -1557,6 +1650,9 @@ if (dom.arenaCanvas) {
     const rect = dom.arenaCanvas.getBoundingClientRect();
     inputState.aimX = event.clientX - rect.left;
     inputState.aimY = event.clientY - rect.top;
+    if (currentMode === "friend") {
+      scheduleFriendInputSend(false);
+    }
   });
   window.addEventListener("resize", resizeArenaCanvas);
   window.addEventListener("keydown", (event) => {
@@ -1586,6 +1682,9 @@ if (dom.arenaCanvas) {
     inputState.down = false;
     inputState.left = false;
     inputState.right = false;
+    if (currentMode === "friend") {
+      scheduleFriendInputSend(false);
+    }
   });
 }
 
