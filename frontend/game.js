@@ -1397,8 +1397,7 @@ function getImage(actor) {
     "sawblade": "NOBG-SawBladeBot.webp",
     "hacker": "NOBG-HackingBot.webp",
     "sniper": "NOBG-SniperBot.webp",
-    "claymore": "NOBGClaymoreRoombaBot.webp"
-  
+    "claymore": "NOBG-ClaymoreRoombaBot.webp",
   };
 
   const filename = keyToImage[botKey];
@@ -1429,11 +1428,25 @@ function drawBot(context, x, y, health, maxHealth, identityColor, now, actor) {
   context.translate(x, y);
 
   const img = getImage(actor);
-  if (img && img.complete && img.naturalWidth > 0) {
+ if (img && img.complete && img.naturalWidth > 0) {
+    const maxSize = 80;
+    const ratio = img.naturalWidth / img.naturalHeight;
+    
+    let drawWidth = maxSize;
+    let drawHeight = maxSize;
+
+    if (ratio > 1) {
+      drawHeight = maxSize / ratio;
+    } else {
+      drawWidth = maxSize * ratio;
+    }
+
     if (actor.facing === -1) {
       context.scale(-1, 1);
     }
-    context.drawImage(img, -40, -40, 80, 80);
+    
+    context.drawImage(img, -drawWidth / 2, -drawHeight / 2, drawWidth, drawHeight);
+    
     if (actor.facing === -1) {
       context.scale(-1, 1);
     }
