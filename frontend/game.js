@@ -5,7 +5,7 @@ const STORAGE_KEY_BASE = "runtime-terror-solo-save-v2";
 let currentStorageKey = STORAGE_KEY_BASE;
 const TICK_MS = 16;
 const BASE_HEALTH = 250;
-const BASE_MOVE_SPEED = 60;
+const BASE_MOVE_SPEED = 100;
 
 const MODULES = [
   { key: "damage", name: "Damage Module", baseBonus: 7.5, format: (value) => `+${value}% damage` },
