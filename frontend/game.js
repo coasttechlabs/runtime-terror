@@ -1398,6 +1398,7 @@ function getImage(actor) {
     "hacker": "NOBG-HackingBot.webp",
     "sniper": "NOBG-SniperBot.webp",
     "claymore": "NOBGClaymoreRoombaBot.webp"
+  
   };
 
   const filename = keyToImage[botKey];
