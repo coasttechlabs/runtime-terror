@@ -632,6 +632,7 @@
   <script type="module">
     import { auth, db } from "./firebase.js";
     import { getApiBase } from "./api-base.js";
+    import { loadSoloState, syncPvpLoadout } from "./pvp-loadout.js";
     import { onAuthStateChanged, sendPasswordResetEmail, updateProfile } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-auth.js";
     import { doc, getDoc } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore.js";
 
@@ -666,6 +667,10 @@
     let friendRequestsIntervalId = null;
     let outgoingRequests = [];
     let incomingRequests = [];
+    let challengeFriends = [];
+    let outgoingChallenges = [];
+    let incomingChallenges = [];
+    let activeMatches = [];
     let pendingRenderToken = 0;
     let activeIdToken = "";
 
@@ -775,6 +780,10 @@
       }
       outgoingRequests = [];
       incomingRequests = [];
+      challengeFriends = [];
+      outgoingChallenges = [];
+      incomingChallenges = [];
+      activeMatches = [];
     }
 
     const usernameCache = new Map();
@@ -814,6 +823,7 @@
       const fragment = document.createDocumentFragment();
       const addedFragment = document.createDocumentFragment();
       const acceptedByUid = new Map();
+      const friendsByUid = new Map();
 
       outgoingSnapshot
         .filter((entry) => entry.status === "accepted" && entry.touserid)
@@ -829,9 +839,15 @@
       const addedFriends = await Promise.all(
         Array.from(acceptedByUid.entries()).map(async ([uid, hintedName]) => {
           const name = hintedName || await usernameFor(uid);
-          return chip("@" + name);
+          friendsByUid.set(uid, name);
+          return { uid, name };
         })
       );
+
+      for (const friend of challengeFriends) {
+        if (!friend?.uid) continue;
+        friendsByUid.set(friend.uid, friend.username || await usernameFor(friend.uid));
+      }
 
       if (renderToken !== pendingRenderToken) return;
 
@@ -870,11 +886,69 @@
         }
       }
 
-      if (addedFriends.length === 0) {
+      const friendRows = Array.from(friendsByUid.entries()).map(([uid, name]) => ({ uid, name }));
+
+      if (friendRows.length === 0) {
         addedFragment.appendChild(chip("No friends added yet"));
       } else {
-        for (const item of addedFriends) {
-          addedFragment.appendChild(item);
+        for (const friend of friendRows) {
+          const row = document.createElement("div");
+          row.className = "friend-item";
+
+          const incomingChallenge = incomingChallenges.find((entry) => entry.challengerUid === friend.uid && entry.status === "pending");
+          const outgoingChallenge = outgoingChallenges.find((entry) => entry.recipientUid === friend.uid && entry.status === "pending");
+          const activeMatch = activeMatches.find((entry) => [entry.playerAUid, entry.playerBUid].includes(friend.uid) && entry.status === "active");
+          const latestMatch = activeMatch || activeMatches.find((entry) => [entry.playerAUid, entry.playerBUid].includes(friend.uid));
+          const label = chip("@" + friend.name);
+          row.appendChild(label);
+
+          const actions = document.createElement("div");
+          actions.className = "friend-actions";
+
+          const statusChip = chip(
+            activeMatch ? "In match" :
+            incomingChallenge ? "Incoming challenge" :
+            outgoingChallenge ? "Challenge sent" :
+            latestMatch?.status === "completed" ? "Last duel finished" :
+            "Ready to challenge"
+          );
+          actions.appendChild(statusChip);
+
+          if (activeMatch?.id) {
+            const open = document.createElement("button");
+            open.type = "button";
+            open.className = "mini-btn accept";
+            open.textContent = "Open Match";
+            open.addEventListener("click", () => {
+              window.location.href = `./game.html?match=${encodeURIComponent(activeMatch.id)}`;
+            });
+            actions.appendChild(open);
+          } else if (incomingChallenge?.id) {
+            const accept = document.createElement("button");
+            accept.type = "button";
+            accept.className = "mini-btn accept";
+            accept.textContent = "Accept Duel";
+            accept.addEventListener("click", () => respondToChallenge(incomingChallenge.id, "accepted"));
+
+            const decline = document.createElement("button");
+            decline.type = "button";
+            decline.className = "mini-btn";
+            decline.textContent = "Decline Duel";
+            decline.addEventListener("click", () => respondToChallenge(incomingChallenge.id, "declined"));
+
+            actions.appendChild(accept);
+            actions.appendChild(decline);
+          } else if (!outgoingChallenge) {
+            const challengeButton = document.createElement("button");
+            challengeButton.type = "button";
+            challengeButton.className = "mini-btn accept";
+            challengeButton.textContent = "Challenge";
+            challengeButton.addEventListener("click", () => sendChallenge(friend.uid));
+            actions.appendChild(challengeButton);
+          }
+
+          row.appendChild(actions);
+          addedFragment.appendChild(row);
         }
       }
 
@@ -886,9 +960,16 @@
     async function refreshFriendRequests() {
       if (!currentUser) return;
       activeIdToken = await currentUser.getIdToken();
-      const payload = await apiRequest("/friends/requests", { token: activeIdToken });
-      outgoingRequests = Array.isArray(payload?.outgoing) ? payload.outgoing : [];
-      incomingRequests = Array.isArray(payload?.incoming) ? payload.incoming : [];
+      const [requestsPayload, challengesPayload] = await Promise.all([
+        apiRequest("/friends/requests", { token: activeIdToken }),
+        apiRequest("/friends/challenges", { token: activeIdToken }),
+      ]);
+      outgoingRequests = Array.isArray(requestsPayload?.outgoing) ? requestsPayload.outgoing : [];
+      incomingRequests = Array.isArray(requestsPayload?.incoming) ? requestsPayload.incoming : [];
+      challengeFriends = Array.isArray(challengesPayload?.friends) ? challengesPayload.friends : [];
+      outgoingChallenges = Array.isArray(challengesPayload?.outgoing) ? challengesPayload.outgoing : [];
+      incomingChallenges = Array.isArray(challengesPayload?.incoming) ? challengesPayload.incoming : [];
+      activeMatches = Array.isArray(challengesPayload?.matches) ? challengesPayload.matches : [];
       await renderPendingRequests();
     }
 
@@ -1032,6 +1113,44 @@
       }
     }
 
+    async function sendChallenge(recipientUid) {
+      if (!recipientUid || !currentUser) return;
+      try {
+        activeIdToken = await currentUser.getIdToken();
+        await apiRequest("/friends/challenges", {
+          method: "POST",
+          token: activeIdToken,
+          body: { recipientUid }
+        });
+        await refreshFriendRequests();
+        setStatus("Private duel challenge sent.", "ok");
+      } catch (error) {
+        console.error("Challenge create error:", error);
+        setStatus(error?.message || "Failed to send duel challenge.", "err");
+      }
+    }
+
+    async function respondToChallenge(challengeId, status) {
+      if (!challengeId || !currentUser) return;
+      try {
+        activeIdToken = await currentUser.getIdToken();
+        const payload = await apiRequest(`/friends/challenges/${encodeURIComponent(challengeId)}`, {
+          method: "PATCH",
+          token: activeIdToken,
+          body: { status }
+        });
+        await refreshFriendRequests();
+        if (payload?.match?.id && status === "accepted") {
+          window.location.href = `./game.html?match=${encodeURIComponent(payload.match.id)}`;
+          return;
+        }
+        setStatus(status === "accepted" ? "Duel accepted." : "Duel declined.", "ok");
+      } catch (error) {
+        console.error("Challenge response error:", error);
+        setStatus(error?.message || "Failed to update duel challenge.", "err");
+      }
+    }
+
     saveProfileButton.addEventListener("click", async () => {
       if (!currentUser) {
         setProfileStatus("Log in to edit your profile.", "err");
@@ -1164,6 +1283,11 @@
       setProfileInputsDisabled(false);
       try {
         activeIdToken = await user.getIdToken();
+        try {
+          await syncPvpLoadout(API_BASE, activeIdToken, loadSoloState());
+        } catch (syncError) {
+          console.error("PvP loadout sync error:", syncError);
+        }
         const payload = await apiRequest("/profile/me", { token: activeIdToken });
         currentProfile = payload?.profile || {};
         hydrateProfileForm(currentProfile, user);

@@ -236,9 +236,6 @@
   </style>
 </head>
 <body>
-  <script>
-    window.location.replace("./game.html");
-  </script>
   <header class="site-header" aria-label="Primary navigation">
     <h2 class="brand">RUNTIME TERROR</h2>
     <nav class="nav">
@@ -266,17 +263,106 @@
     <h1 class="title">Game</h1>
 
     <section class="modes" aria-label="Game modes">
-      <button class="mode-btn primary" type="button" data-href="./game.html">Solo</button>
-      <button class="mode-btn" type="button" disabled>Multiplayer</button>
-      <button class="mode-btn local" type="button" disabled>Local</button>
+      <button class="mode-btn primary" type="button" data-href="./game.html">Solo Battle</button>
+      <button class="mode-btn" type="button" data-href="./profile-settings.html">Friends</button>
+      <button class="mode-btn local" type="button" data-href="./profile-settings.html">Send Duel Invite</button>
+    </section>
+    <section style="max-width:680px;margin:34px auto 0;">
+      <h2 style="font-family:'Special Elite', monospace;color:var(--line);font-size:1.3rem;letter-spacing:1px;">Friend Matches</h2>
+      <p id="friend-match-status" style="color:var(--muted);margin:0 0 14px;">Log in to see incoming duel invites and active private matches.</p>
+      <div id="friend-match-list" style="display:grid;gap:12px;"></div>
     </section>
   </main>
   <script type="module" src="./nav.js"></script>
-  <script>
+  <script type="module">
+    import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-auth.js";
+    import { auth } from "./firebase.js";
+    import { getApiBase } from "./api-base.js";
+
+    const API_BASE = getApiBase();
+    const statusNode = document.getElementById("friend-match-status");
+    const listNode = document.getElementById("friend-match-list");
+
     document.querySelectorAll("[data-href]").forEach((button) => {
       button.addEventListener("click", () => {
         window.location.href = button.dataset.href;
       });
+    });
+
+    async function loadFriendMatches(user) {
+      const token = await user.getIdToken();
+      const response = await fetch(`${API_BASE}/friends/challenges`, {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
+      const payload = await response.json();
+      if (!response.ok) {
+        throw new Error(payload?.detail || `Failed to load duels (${response.status})`);
+      }
+      return payload;
+    }
+
+    function renderMatches(payload) {
+      const incoming = Array.isArray(payload?.incoming) ? payload.incoming.filter((entry) => entry.status === "pending") : [];
+      const matches = Array.isArray(payload?.matches) ? payload.matches : [];
+      listNode.replaceChildren();
+
+      if (incoming.length === 0 && matches.length === 0) {
+        statusNode.textContent = "No incoming duel invites or active friend matches right now.";
+        return;
+      }
+
+      statusNode.textContent = "Jump back into a private duel or open profile to answer an invite.";
+      incoming.forEach((entry) => {
+        const card = document.createElement("div");
+        card.style.border = "2px solid rgba(28,255,122,0.24)";
+        card.style.padding = "14px";
+        card.style.background = "rgba(5,7,10,0.35)";
+        card.innerHTML = `<strong>Incoming challenge</strong><div style="margin-top:6px;">${entry.challengerUsername || entry.challengerUid} invited you to a private duel.</div>`;
+        const button = document.createElement("button");
+        button.className = "mode-btn";
+        button.style.marginTop = "12px";
+        button.textContent = "Open Friends";
+        button.addEventListener("click", () => {
+          window.location.href = "./profile-settings.html";
+        });
+        card.appendChild(button);
+        listNode.appendChild(card);
+      });
+
+      matches.forEach((match) => {
+        const card = document.createElement("div");
+        card.style.border = "2px solid rgba(28,255,122,0.24)";
+        card.style.padding = "14px";
+        card.style.background = "rgba(5,7,10,0.35)";
+        card.innerHTML = `<strong>${match.playerAUsername || "Player A"} vs ${match.playerBUsername || "Player B"}</strong><div style="margin-top:6px;">Status: ${match.status}</div>`;
+        const button = document.createElement("button");
+        button.className = "mode-btn primary";
+        button.style.marginTop = "12px";
+        button.textContent = match.status === "active" ? "Open Match" : "View Result";
+        button.addEventListener("click", () => {
+          window.location.href = `./game.html?match=${encodeURIComponent(match.id)}`;
+        });
+        card.appendChild(button);
+        listNode.appendChild(card);
+      });
+    }
+
+    onAuthStateChanged(auth, async (user) => {
+      if (!user) {
+        statusNode.textContent = "Log in to see incoming duel invites and active private matches.";
+        listNode.replaceChildren();
+        return;
+      }
+      statusNode.textContent = "Loading friend duels...";
+      try {
+        renderMatches(await loadFriendMatches(user));
+      } catch (error) {
+        console.error("Friend match panel failed:", error);
+        statusNode.textContent = error?.message || "Failed to load friend matches.";
+        listNode.replaceChildren();
+      }
     });
   </script>
 </body>

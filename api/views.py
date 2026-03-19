@@ -9,11 +9,26 @@ from rest_framework.views import APIView
 
 from .authentication import firebase_auth, initialize_firebase
 from .permissions import IsFirebaseAdmin
+from .pvp import (
+    CHALLENGE_TTL_MS,
+    advance_match_state,
+    create_match_record,
+    default_loadout,
+    normalize_loadout,
+    now_ms,
+    serialize_loadout_document,
+)
 
 USERS_COLLECTION = "users"
 FRIEND_REQUESTS_COLLECTION = "friendRequests"
+PVP_LOADOUTS_COLLECTION = "pvpLoadouts"
+FRIEND_CHALLENGES_COLLECTION = "friendChallenges"
+FRIEND_MATCHES_COLLECTION = "friendMatches"
 RANK_OPTIONS = {"player", "unranked", "mod", "admin", "co-owner", "owner", "banned"}
 FRIEND_REQUEST_STATUS = {"pending", "accepted", "declined"}
+CHALLENGE_RESPONSE_STATUS = {"accepted", "declined"}
+CHALLENGE_ACTIVE_STATUS = {"pending", "accepted"}
+MATCH_ACTIVE_STATUS = {"active"}
 
 
 def _users_ref():
@@ -24,6 +39,21 @@ def _users_ref():
 def _friend_requests_ref():
     initialize_firebase()
     return firestore.client().collection(FRIEND_REQUESTS_COLLECTION)
+
+
+def _pvp_loadouts_ref():
+    initialize_firebase()
+    return firestore.client().collection(PVP_LOADOUTS_COLLECTION)
+
+
+def _friend_challenges_ref():
+    initialize_firebase()
+    return firestore.client().collection(FRIEND_CHALLENGES_COLLECTION)
+
+
+def _friend_matches_ref():
+    initialize_firebase()
+    return firestore.client().collection(FRIEND_MATCHES_COLLECTION)
 
 
 def _auth_uid(request):
@@ -83,6 +113,112 @@ def _serialize_friend_request(snapshot, usernames_by_uid):
         "createdAt": data.get("createdAt"),
         "respondedAt": data.get("respondedAt"),
     }
+
+
+def _normalize_timestamp_ms(value):
+    if value in (None, ""):
+        return None
+    if isinstance(value, (int, float)):
+        return int(value)
+    seconds = getattr(value, "timestamp", None)
+    if callable(seconds):
+        return int(seconds() * 1000)
+    return None
+
+
+def _accepted_friend_uids(uid):
+    requests_ref = _friend_requests_ref()
+    outgoing = list(
+        requests_ref.where("fromuserid", "==", uid).where("status", "==", "accepted").stream()
+    )
+    incoming = list(
+        requests_ref.where("touserid", "==", uid).where("status", "==", "accepted").stream()
+    )
+    accepted = set()
+    for entry in outgoing:
+        target_uid = (entry.to_dict() or {}).get("touserid")
+        if target_uid:
+            accepted.add(target_uid)
+    for entry in incoming:
+        source_uid = (entry.to_dict() or {}).get("fromuserid")
+        if source_uid:
+            accepted.add(source_uid)
+    return accepted
+
+
+def _serialize_friend_user(uid, usernames):
+    users_ref = _users_ref()
+    snapshot = users_ref.document(uid).get()
+    data = snapshot.to_dict() if snapshot.exists else {}
+    return {
+        "uid": uid,
+        "username": usernames.get(uid, data.get("username") or uid),
+        "email": data.get("email", ""),
+        "rank": data.get("rank", "unranked"),
+    }
+
+
+def _expire_stale_challenge(snapshot, ref=None):
+    data = snapshot.to_dict() or {}
+    if data.get("status") != "pending":
+        return data
+    expires_at_ms = data.get("expiresAtMs")
+    if expires_at_ms is None:
+        created_at_ms = _normalize_timestamp_ms(data.get("createdAt")) or now_ms()
+        expires_at_ms = created_at_ms + CHALLENGE_TTL_MS
+    if expires_at_ms > now_ms():
+        return data
+    updates = {
+        "status": "expired",
+        "expiredAt": firestore.SERVER_TIMESTAMP,
+        "expiredAtMs": now_ms(),
+    }
+    target_ref = ref or _friend_challenges_ref().document(snapshot.id)
+    target_ref.set(updates, merge=True)
+    refreshed = target_ref.get()
+    return refreshed.to_dict() or data
+
+
+def _serialize_challenge(snapshot, usernames_by_uid):
+    data = _expire_stale_challenge(snapshot)
+    return {
+        "id": snapshot.id,
+        "challengerUid": data.get("challengerUid"),
+        "challengerUsername": usernames_by_uid.get(data.get("challengerUid"), data.get("challengerUid")),
+        "recipientUid": data.get("recipientUid"),
+        "recipientUsername": usernames_by_uid.get(data.get("recipientUid"), data.get("recipientUid")),
+        "status": data.get("status", "pending"),
+        "matchId": data.get("matchId"),
+        "createdAtMs": data.get("createdAtMs"),
+        "expiresAtMs": data.get("expiresAtMs"),
+        "respondedAtMs": data.get("respondedAtMs"),
+    }
+
+
+def _serialize_match(snapshot, usernames_by_uid):
+    data = snapshot.to_dict() or {}
+    snapshot_data = data.get("snapshot") or {}
+    players = snapshot_data.get("players") or {}
+    return {
+        "id": snapshot.id,
+        "challengeId": data.get("challengeId"),
+        "status": data.get("status"),
+        "playerAUid": data.get("playerAUid"),
+        "playerAUsername": usernames_by_uid.get(data.get("playerAUid"), data.get("playerAUsername") or data.get("playerAUid")),
+        "playerBUid": data.get("playerBUid"),
+        "playerBUsername": usernames_by_uid.get(data.get("playerBUid"), data.get("playerBUsername") or data.get("playerBUid")),
+        "winnerUid": data.get("winnerUid"),
+        "terminationReason": data.get("terminationReason"),
+        "createdAtMs": data.get("createdAtMs"),
+        "acceptedAtMs": data.get("acceptedAtMs"),
+        "completedAtMs": data.get("completedAtMs"),
+        "snapshot": snapshot_data,
+        "players": players,
+    }
+
+
+def _clean_uids(*items):
+    return {uid for uid in items if uid}
 
 
 def _find_user_by_identifier(identifier):
@@ -281,6 +417,251 @@ class FriendRequestDetailView(APIView):
         user_ids.discard("")
         usernames = _usernames_map(user_ids)
         return Response({"request": _serialize_friend_request(updated, usernames)}, status=status.HTTP_200_OK)
+
+
+class PvpLoadoutView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        uid = _auth_uid(request)
+        snapshot = _pvp_loadouts_ref().document(uid).get()
+        if not snapshot.exists:
+            return Response({"loadout": serialize_loadout_document(uid, default_loadout())})
+        return Response({"loadout": serialize_loadout_document(uid, snapshot.to_dict() or {})})
+
+    def patch(self, request):
+        uid = _auth_uid(request)
+        payload = request.data if isinstance(request.data, dict) else {}
+        try:
+            loadout = normalize_loadout(payload)
+        except ValueError as exc:
+            raise ValidationError({"loadout": str(exc)}) from exc
+        doc_ref = _pvp_loadouts_ref().document(uid)
+        doc_ref.set(
+            {
+                **loadout,
+                "updatedAt": firestore.SERVER_TIMESTAMP,
+                "updatedAtMs": now_ms(),
+            },
+            merge=True,
+        )
+        updated = doc_ref.get()
+        return Response({"loadout": serialize_loadout_document(uid, updated.to_dict() or {})}, status=status.HTTP_200_OK)
+
+
+class FriendChallengesView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        uid = _auth_uid(request)
+        accepted_uids = _accepted_friend_uids(uid)
+        usernames = _usernames_map(set(accepted_uids) | {uid})
+        friends = [_serialize_friend_user(friend_uid, usernames) for friend_uid in sorted(accepted_uids)]
+
+        challenges_ref = _friend_challenges_ref()
+        outgoing = list(challenges_ref.where("challengerUid", "==", uid).stream())
+        incoming = list(challenges_ref.where("recipientUid", "==", uid).stream())
+        relevant_challenges = outgoing + incoming
+        challenge_user_ids = {uid}
+        for entry in relevant_challenges:
+            data = entry.to_dict() or {}
+            challenge_user_ids.add(data.get("challengerUid"))
+            challenge_user_ids.add(data.get("recipientUid"))
+        challenge_user_ids.discard(None)
+        usernames.update(_usernames_map({item for item in challenge_user_ids if item}))
+        serialized_outgoing = [_serialize_challenge(entry, usernames) for entry in outgoing]
+        serialized_incoming = [_serialize_challenge(entry, usernames) for entry in incoming]
+
+        matches_ref = _friend_matches_ref()
+        matches = list(matches_ref.where("playerAUid", "==", uid).stream())
+        matches += list(matches_ref.where("playerBUid", "==", uid).stream())
+        serialized_matches = [_serialize_match(entry, usernames) for entry in matches]
+
+        return Response(
+            {
+                "friends": friends,
+                "outgoing": serialized_outgoing,
+                "incoming": serialized_incoming,
+                "matches": serialized_matches,
+            }
+        )
+
+    def post(self, request):
+        uid = _auth_uid(request)
+        payload = request.data if isinstance(request.data, dict) else {}
+        recipient_uid = str(payload.get("recipientUid", "")).strip()
+        if not recipient_uid:
+            raise ValidationError({"recipientUid": "recipientUid is required."})
+        if recipient_uid == uid:
+            raise ValidationError({"recipientUid": "You cannot challenge yourself."})
+        accepted_uids = _accepted_friend_uids(uid)
+        if recipient_uid not in accepted_uids:
+            raise PermissionDenied("You can only challenge accepted friends.")
+
+        challenger_loadout = _pvp_loadouts_ref().document(uid).get()
+        recipient_loadout = _pvp_loadouts_ref().document(recipient_uid).get()
+        if not challenger_loadout.exists or not recipient_loadout.exists:
+            raise ValidationError({"recipientUid": "Both players need a synced PvP loadout before challenging."})
+
+        for snapshot in list(_friend_challenges_ref().where("challengerUid", "==", uid).where("recipientUid", "==", recipient_uid).stream()):
+            data = _expire_stale_challenge(snapshot)
+            if data.get("status") in CHALLENGE_ACTIVE_STATUS:
+                raise ValidationError({"recipientUid": "An active challenge already exists for this friend."})
+        for snapshot in list(_friend_challenges_ref().where("challengerUid", "==", recipient_uid).where("recipientUid", "==", uid).stream()):
+            data = _expire_stale_challenge(snapshot)
+            if data.get("status") in CHALLENGE_ACTIVE_STATUS:
+                raise ValidationError({"recipientUid": "An active challenge already exists for this friend."})
+
+        matches = list(_friend_matches_ref().where("playerAUid", "==", uid).stream())
+        matches += list(_friend_matches_ref().where("playerBUid", "==", uid).stream())
+        for match in matches:
+            data = match.to_dict() or {}
+            if data.get("status") in MATCH_ACTIVE_STATUS:
+                raise ValidationError({"recipientUid": "You are already in an active friend match."})
+        recipient_matches = list(_friend_matches_ref().where("playerAUid", "==", recipient_uid).stream())
+        recipient_matches += list(_friend_matches_ref().where("playerBUid", "==", recipient_uid).stream())
+        for match in recipient_matches:
+            data = match.to_dict() or {}
+            if data.get("status") in MATCH_ACTIVE_STATUS:
+                raise ValidationError({"recipientUid": "That friend is already in an active match."})
+
+        created_ref, _ = _friend_challenges_ref().add(
+            {
+                "challengerUid": uid,
+                "recipientUid": recipient_uid,
+                "status": "pending",
+                "createdAt": firestore.SERVER_TIMESTAMP,
+                "createdAtMs": now_ms(),
+                "expiresAtMs": now_ms() + CHALLENGE_TTL_MS,
+            }
+        )
+        created = created_ref.get()
+        usernames = _usernames_map({uid, recipient_uid})
+        return Response({"challenge": _serialize_challenge(created, usernames)}, status=status.HTTP_201_CREATED)
+
+
+class FriendChallengeDetailView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, challenge_id):
+        uid = _auth_uid(request)
+        snapshot = _friend_challenges_ref().document(challenge_id).get()
+        if not snapshot.exists:
+            raise NotFound("Challenge not found.")
+        data = snapshot.to_dict() or {}
+        if uid not in {data.get("challengerUid"), data.get("recipientUid")}:
+            raise PermissionDenied("You do not have access to this challenge.")
+        usernames = _usernames_map(_clean_uids(data.get("challengerUid"), data.get("recipientUid")))
+        return Response({"challenge": _serialize_challenge(snapshot, usernames)})
+
+    def patch(self, request, challenge_id):
+        uid = _auth_uid(request)
+        payload = request.data if isinstance(request.data, dict) else {}
+        next_status = str(payload.get("status", "")).strip().lower()
+        if next_status not in CHALLENGE_RESPONSE_STATUS:
+            raise ValidationError({"status": "Status must be accepted or declined."})
+
+        challenge_ref = _friend_challenges_ref().document(challenge_id)
+        snapshot = challenge_ref.get()
+        if not snapshot.exists:
+            raise NotFound("Challenge not found.")
+        data = _expire_stale_challenge(snapshot, ref=challenge_ref)
+        if data.get("recipientUid") != uid:
+            raise PermissionDenied("Only the invited friend can respond to this challenge.")
+        if data.get("status") != "pending":
+            raise ValidationError({"status": "This challenge can no longer be updated."})
+
+        updates = {
+            "status": next_status,
+            "respondedAt": firestore.SERVER_TIMESTAMP,
+            "respondedAtMs": now_ms(),
+        }
+        match_snapshot = None
+        if next_status == "accepted":
+            challenger_uid = data.get("challengerUid")
+            recipient_uid = data.get("recipientUid")
+            existing_matches = list(_friend_matches_ref().where("playerAUid", "==", challenger_uid).stream())
+            existing_matches += list(_friend_matches_ref().where("playerBUid", "==", challenger_uid).stream())
+            existing_matches += list(_friend_matches_ref().where("playerAUid", "==", recipient_uid).stream())
+            existing_matches += list(_friend_matches_ref().where("playerBUid", "==", recipient_uid).stream())
+            for match in existing_matches:
+                match_data = match.to_dict() or {}
+                if match_data.get("status") in MATCH_ACTIVE_STATUS:
+                    raise ValidationError({"status": "One of the players is already in an active friend match."})
+            challenger_loadout = _pvp_loadouts_ref().document(challenger_uid).get()
+            recipient_loadout = _pvp_loadouts_ref().document(recipient_uid).get()
+            if not challenger_loadout.exists or not recipient_loadout.exists:
+                raise ValidationError({"status": "Both players need a synced PvP loadout before the match can start."})
+            usernames = _usernames_map(_clean_uids(challenger_uid, recipient_uid))
+            match_data = create_match_record(
+                challenge_id,
+                challenger_uid,
+                usernames.get(challenger_uid, challenger_uid),
+                challenger_loadout.to_dict() or {},
+                recipient_uid,
+                usernames.get(recipient_uid, recipient_uid),
+                recipient_loadout.to_dict() or {},
+            )
+            match_ref, _ = _friend_matches_ref().add(
+                {
+                    **match_data,
+                    "createdAt": firestore.SERVER_TIMESTAMP,
+                    "acceptedAt": firestore.SERVER_TIMESTAMP,
+                }
+            )
+            updates["matchId"] = match_ref.id
+            match_snapshot = match_ref.get()
+
+        challenge_ref.set(updates, merge=True)
+        updated = challenge_ref.get()
+        usernames = _usernames_map(_clean_uids(data.get("challengerUid"), data.get("recipientUid")))
+        response_payload = {"challenge": _serialize_challenge(updated, usernames)}
+        if match_snapshot is not None:
+            response_payload["match"] = _serialize_match(match_snapshot, usernames)
+        return Response(response_payload, status=status.HTTP_200_OK)
+
+
+class FriendMatchDetailView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, match_id):
+        uid = _auth_uid(request)
+        match_ref = _friend_matches_ref().document(match_id)
+        snapshot = match_ref.get()
+        if not snapshot.exists:
+            raise NotFound("Match not found.")
+        data = snapshot.to_dict() or {}
+        if uid not in {data.get("playerAUid"), data.get("playerBUid")}:
+            raise PermissionDenied("You do not have access to this match.")
+        advanced = advance_match_state(data, actor_uid=uid)
+        if advanced != data:
+            match_ref.set(advanced, merge=False)
+            snapshot = match_ref.get()
+            data = snapshot.to_dict() or {}
+        usernames = _usernames_map(_clean_uids(data.get("playerAUid"), data.get("playerBUid")))
+        return Response({"match": _serialize_match(snapshot, usernames)})
+
+
+class FriendMatchActionView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request, match_id):
+        uid = _auth_uid(request)
+        payload = request.data if isinstance(request.data, dict) else {}
+        match_ref = _friend_matches_ref().document(match_id)
+        snapshot = match_ref.get()
+        if not snapshot.exists:
+            raise NotFound("Match not found.")
+        data = snapshot.to_dict() or {}
+        if uid not in {data.get("playerAUid"), data.get("playerBUid")}:
+            raise PermissionDenied("You do not have access to this match.")
+        if data.get("status") != "active":
+            raise ValidationError({"detail": "This match is no longer accepting actions."})
+        advanced = advance_match_state(data, actor_uid=uid, input_payload=payload)
+        match_ref.set(advanced, merge=False)
+        updated = match_ref.get()
+        usernames = _usernames_map(_clean_uids(advanced.get("playerAUid"), advanced.get("playerBUid")))
+        return Response({"match": _serialize_match(updated, usernames)}, status=status.HTTP_200_OK)
 
 
 class AdminHealthView(APIView):

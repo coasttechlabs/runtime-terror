@@ -1,9 +1,23 @@
-const STORAGE_KEY = "runtime-terror-solo-save-v1";
+import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-auth.js";
+import { auth } from "./firebase.js";
+import { getApiBase } from "./api-base.js";
+import {
+  STORAGE_KEY_BASE,
+  buildPvpLoadoutFromSoloState,
+  loadSoloState,
+  saveSoloState,
+  syncPvpLoadout,
+} from "./pvp-loadout.js";
+
+const STORAGE_KEY = STORAGE_KEY_BASE;
+const API_BASE = getApiBase();
 const TICK_MS = 16;
 const BASE_HEALTH = 100;
 const BASE_PLAYER_DAMAGE = 22;
 const BASE_PLAYER_COOLDOWN = 1.6;
 const BASE_MOVE_SPEED = 40;
+const MATCH_POLL_MS = 900;
+const MATCH_INPUT_MS = 140;
 
 const MODULES = [
   { key: "damage", name: "Damage Module", baseBonus: 7.5, format: (value) => `+${value}% damage` },
@@ -142,11 +156,21 @@ let battle = null;
 let lastBattleReport = "";
 let arenaFrame = null;
 let autoAdvanceTimeout = null;
+let currentUser = null;
+let activeIdToken = "";
+let matchPollIntervalId = null;
+let matchInputIntervalId = null;
+let currentMatchId = new URLSearchParams(window.location.search).get("match") || "";
+let currentMode = currentMatchId ? "friend" : "solo";
+let fireNonce = 0;
+let abilityNonce = 0;
 const inputState = {
   up: false,
   down: false,
   left: false,
   right: false,
+  aimX: 640,
+  aimY: 360,
 };
 
 function setText(node, value) {
@@ -179,27 +203,148 @@ function defaultState() {
 }
 
 function loadState() {
-  try {
-    const raw = window.localStorage.getItem(STORAGE_KEY);
-    if (!raw) return defaultState();
-    const parsed = JSON.parse(raw);
-    return {
-      ...defaultState(),
-      ...parsed,
-      modules: {
-        ...defaultState().modules,
-        ...(parsed.modules || {}),
-      },
-      berserks: Array.isArray(parsed.berserks) ? parsed.berserks : [],
-      salvage: Array.isArray(parsed.salvage) ? parsed.salvage : [],
-    };
-  } catch (_error) {
-    return defaultState();
-  }
+  return loadSoloState(STORAGE_KEY);
 }
 
 function saveState() {
-  window.localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+  saveSoloState(state, STORAGE_KEY);
+  schedulePvpLoadoutSync();
+}
+
+async function apiRequest(path, { method = "GET", body = null } = {}) {
+  const headers = {};
+  if (activeIdToken) {
+    headers.Authorization = `Bearer ${activeIdToken}`;
+  }
+  if (body !== null) {
+    headers["Content-Type"] = "application/json";
+  }
+  const response = await fetch(`${API_BASE}${path}`, {
+    method,
+    headers,
+    body: body === null ? undefined : JSON.stringify(body),
+  });
+  let payload = null;
+  try {
+    payload = await response.json();
+  } catch (_error) {
+    payload = null;
+  }
+  if (!response.ok) {
+    throw new Error(payload?.detail || payload?.status || payload?.recipientUid || `Request failed (${response.status})`);
+  }
+  return payload;
+}
+
+function schedulePvpLoadoutSync() {
+  if (!currentUser || !activeIdToken) return;
+  syncPvpLoadout(API_BASE, activeIdToken, state).catch((error) => {
+    console.error("PvP loadout sync failed:", error);
+  });
+}
+
+function getPvpLoadoutSummary() {
+  return buildPvpLoadoutFromSoloState(state);
+}
+
+function clearFriendMatchTimers() {
+  if (matchPollIntervalId) {
+    window.clearInterval(matchPollIntervalId);
+    matchPollIntervalId = null;
+  }
+  if (matchInputIntervalId) {
+    window.clearInterval(matchInputIntervalId);
+    matchInputIntervalId = null;
+  }
+}
+
+function friendMatchTitle(match) {
+  if (!match) return "Friend duel";
+  return `${match.playerAUsername || "Player A"} vs ${match.playerBUsername || "Player B"}`;
+}
+
+function updateFriendBattleFromMatch(match) {
+  if (!match?.snapshot?.players || !currentUser) return;
+  const players = match.snapshot.players;
+  const self = players[currentUser.uid];
+  const opponent = Object.values(players).find((entry) => entry.uid !== currentUser.uid);
+  if (!self || !opponent) return;
+  battle = {
+    mode: "friend",
+    matchId: match.id,
+    player: self,
+    enemy: opponent,
+    enemyBlueprint: {
+      bot: {
+        attackName: opponent.attackName || opponent.name,
+      },
+    },
+    logLines: Array.isArray(match.snapshot.logs) ? match.snapshot.logs : [],
+    rawMatch: match,
+  };
+  lastBattleReport = battle.logLines.join("\n");
+  syncBattleUi();
+}
+
+async function fetchFriendMatch() {
+  if (!currentMatchId || !currentUser) return;
+  const payload = await apiRequest(`/matches/${encodeURIComponent(currentMatchId)}`);
+  const match = payload?.match;
+  if (!match) return;
+  updateFriendBattleFromMatch(match);
+  if (match.status !== "active") {
+    clearFriendMatchTimers();
+  }
+}
+
+async function sendFriendInput() {
+  if (!currentMatchId || !currentUser || currentMode !== "friend") return;
+  const canvas = dom.arenaCanvas;
+  let aimX = inputState.aimX;
+  let aimY = inputState.aimY;
+  if (canvas) {
+    const rect = canvas.getBoundingClientRect();
+    if (rect.width > 0 && rect.height > 0) {
+      aimX = ((inputState.aimX || rect.width / 2) / rect.width) * 1280;
+      aimY = ((inputState.aimY || rect.height / 2) / rect.height) * 720;
+    }
+  }
+  const payload = await apiRequest(`/matches/${encodeURIComponent(currentMatchId)}/actions`, {
+    method: "POST",
+    body: {
+      up: inputState.up,
+      down: inputState.down,
+      left: inputState.left,
+      right: inputState.right,
+      aimX,
+      aimY,
+      fireNonce,
+      abilityNonce,
+    },
+  });
+  if (payload?.match) {
+    updateFriendBattleFromMatch(payload.match);
+  }
+}
+
+async function startFriendMatchMode() {
+  if (!currentMatchId) {
+    currentMode = "solo";
+    return;
+  }
+  if (!currentUser) return;
+  clearFriendMatchTimers();
+  await fetchFriendMatch();
+  matchPollIntervalId = window.setInterval(() => {
+    fetchFriendMatch().catch((error) => {
+      console.error("Friend match refresh failed:", error);
+    });
+  }, MATCH_POLL_MS);
+  matchInputIntervalId = window.setInterval(() => {
+    sendFriendInput().catch((error) => {
+      console.error("Friend match input failed:", error);
+    });
+  }, MATCH_INPUT_MS);
 }
 
 function getProgressionStage(encounter) {
@@ -335,6 +480,14 @@ function createActor(kind, config) {
 }
 
 function startBattle() {
+  if (currentMode === "friend") {
+    startFriendMatchMode().catch((error) => {
+      console.error("Friend match start failed:", error);
+      lastBattleReport = error?.message || "Failed to open friend match.";
+      syncBattleUi();
+    });
+    return;
+  }
   if (battle) return;
   if (autoAdvanceTimeout) {
     window.clearTimeout(autoAdvanceTimeout);
@@ -387,6 +540,9 @@ function startBattle() {
 }
 
 function endBattle(result) {
+  if (currentMode === "friend") {
+    return;
+  }
   if (!battle) return;
   window.clearInterval(battle.intervalId);
 
@@ -453,6 +609,7 @@ function maybeGrantSalvage(result) {
 }
 
 function tickBattle() {
+  if (currentMode === "friend") return;
   if (!battle) return;
 
   const delta = TICK_MS / 1000;
@@ -723,6 +880,10 @@ function activateBerserk(actor, opponent, key) {
 }
 
 function handlePlayerFire() {
+  if (currentMode === "friend") {
+    fireNonce += 1;
+    return;
+  }
   if (!battle) return;
   const { player, enemy } = battle;
   if (player.cooldownRemaining > 0 || isDisabled(player)) return;
@@ -737,6 +898,10 @@ function handlePlayerFire() {
 }
 
 function handlePlayerBerserk() {
+  if (currentMode === "friend") {
+    abilityNonce += 1;
+    return;
+  }
   if (!battle) return;
   const available = state.berserks.filter(
     (key) => ["freeze", "striker", "golden"].includes(key) && !battle.player.usedBerserks.includes(key)
@@ -836,6 +1001,13 @@ function highestOwnedTier() {
 }
 
 function syncStaticUi() {
+  if (currentMode === "friend") {
+    setText(dom.encounterValue, "PVP");
+    setText(dom.moneyValue, "");
+    setText(dom.recordValue, "Private Match");
+    setText(dom.difficultyValue, friendMatchTitle(battle?.rawMatch));
+    return;
+  }
   setText(dom.encounterValue, `${state.encounter}`);
   setText(dom.moneyValue, `$${state.money}`);
   setText(dom.recordValue, `${state.wins}W / ${state.losses}L`);
@@ -856,28 +1028,28 @@ function syncBattleUi() {
   }
 
   if (!battle) {
-    setText(dom.enemyName, "Enemy Bot");
+    setText(dom.enemyName, currentMode === "friend" ? "Connecting..." : "Enemy Bot");
     setText(dom.playerHealthText, `${playerProfile.maxHealth} / ${playerProfile.maxHealth}`);
-    setText(dom.enemyHealthText, "100 / 100");
+    setText(dom.enemyHealthText, currentMode === "friend" ? "-- / --" : "100 / 100");
     setWidth(dom.playerHealthBar, "100%");
     setWidth(dom.enemyHealthBar, "100%");
     setWidth(dom.playerCooldownBar, "0%");
     setWidth(dom.enemyCooldownBar, "0%");
-    setText(dom.playerStatus, "Ready");
-    setText(dom.enemyStatus, "");
+    setText(dom.playerStatus, currentMode === "friend" ? "Waiting for match state" : "Ready");
+    setText(dom.enemyStatus, currentMode === "friend" ? "Friend duel pending" : "");
     if (dom.enemyStats) {
       dom.enemyStats.replaceChildren(...makeStats([
-        `Weapon ???`,
-        `Damage ???`,
-        `Health ???`,
-        `Armour ???`,
-        `Speed ???`,
-        `Unique drop rolls Tier 7+`,
+        currentMode === "friend" ? "Friend duel room" : "Weapon ???",
+        currentMode === "friend" ? "Syncing arena state" : "Damage ???",
+        currentMode === "friend" ? "Modules and berserks come from synced loadout" : "Health ???",
+        currentMode === "friend" ? "Use profile friends tab to send challenges" : "Armour ???",
+        currentMode === "friend" ? "Query parameter ?match=<id> opens a private duel" : "Speed ???",
+        currentMode === "friend" ? "Waiting for authoritative room snapshot" : "Unique drop rolls Tier 7+",
       ]));
     }
-    setDisabled(dom.fireButton, true);
-    setDisabled(dom.berserkButton, true);
-    setDisabled(dom.startBattle, false);
+    setDisabled(dom.fireButton, currentMode !== "friend");
+    setDisabled(dom.berserkButton, currentMode !== "friend");
+    setDisabled(dom.startBattle, currentMode === "friend" ? !currentUser : false);
     setText(dom.battleLog, lastBattleReport);
     renderArena();
     return;
@@ -900,14 +1072,16 @@ function syncBattleUi() {
       `Health ${enemy.maxHealth}`,
       `Armour ${enemy.armorBonus.toFixed(1)}%`,
       `Speed ${enemy.speedBonus.toFixed(1)}%`,
-      `${getDifficultyLabel(state.encounter)} enemy`,
+      currentMode === "friend" ? "Friend opponent" : `${getDifficultyLabel(state.encounter)} enemy`,
     ]));
   }
   setDisabled(dom.fireButton, player.cooldownRemaining > 0 || isDisabled(player) || player.health <= 0 || enemy.health <= 0);
   setDisabled(
     dom.berserkButton,
     isDisabled(player) ||
-    !state.berserks.some((key) => ["freeze", "striker", "golden"].includes(key) && !player.usedBerserks.includes(key)) ||
+    !(currentMode === "friend"
+      ? Array.isArray(player.berserks) && player.berserks.some((key) => ["freeze", "striker", "golden"].includes(key))
+      : state.berserks.some((key) => ["freeze", "striker", "golden"].includes(key) && !player.usedBerserks.includes(key))) ||
     Boolean(player.berserkState)
   );
   setDisabled(dom.startBattle, true);
@@ -1224,6 +1398,32 @@ function roundNumber(value) {
   return Math.round(value * 10) / 10;
 }
 
+onAuthStateChanged(auth, async (user) => {
+  currentUser = user;
+  if (!user) {
+    activeIdToken = "";
+    clearFriendMatchTimers();
+    if (currentMode === "friend") {
+      lastBattleReport = "Log in to join a private friend match.";
+      battle = null;
+      syncStaticUi();
+      syncBattleUi();
+    }
+    return;
+  }
+
+  activeIdToken = await user.getIdToken();
+  schedulePvpLoadoutSync();
+
+  if (currentMode === "friend" && currentMatchId) {
+    startFriendMatchMode().catch((error) => {
+      console.error("Friend match boot failed:", error);
+      lastBattleReport = error?.message || "Failed to join friend match.";
+      syncBattleUi();
+    });
+  }
+});
+
 if (dom.startBattle) dom.startBattle.addEventListener("click", startBattle);
 if (dom.resetSave) dom.resetSave.addEventListener("click", resetSave);
 if (dom.fireButton) dom.fireButton.addEventListener("click", handlePlayerFire);
@@ -1236,6 +1436,11 @@ if (dom.arenaCanvas) {
   }
 
   dom.arenaCanvas.addEventListener("pointerdown", handlePlayerFire);
+  dom.arenaCanvas.addEventListener("pointermove", (event) => {
+    const rect = dom.arenaCanvas.getBoundingClientRect();
+    inputState.aimX = event.clientX - rect.left;
+    inputState.aimY = event.clientY - rect.top;
+  });
   window.addEventListener("resize", resizeArenaCanvas);
   window.addEventListener("keydown", (event) => {
     setInput(event.code, true);
@@ -1270,7 +1475,12 @@ if (dom.arenaCanvas) {
 if (dom.startBattle || dom.arenaCanvas) {
   syncStaticUi();
   syncBattleUi();
-  renderShops();
-  renderInventory();
-  scheduleAutoAdvance();
+  if (currentMode === "solo") {
+    renderShops();
+    renderInventory();
+    scheduleAutoAdvance();
+  } else {
+    lastBattleReport = currentUser ? "Opening private match..." : "Log in to join a private friend match.";
+    syncBattleUi();
+  }
 }
