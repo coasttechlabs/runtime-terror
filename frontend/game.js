@@ -221,7 +221,7 @@ const dom = {
   upgradeShop: document.querySelector("#upgrade-shop"),
   berserkShop: document.querySelector("#berserk-shop"),
   uniqueInventory: document.querySelector("#unique-inventory"),
-
+  profileButton: document.querySelector("#profile-button"),
 };
 
 let state = loadState();
@@ -1350,8 +1350,6 @@ function renderArena() {
     const playerY = height * 0.58;
     const enemyY = height * 0.58;
     drawHudText(context, BASE_HEALTH, distanceUnits(playerX, playerY, enemyX, enemyY));
-    drawBot(context, playerX, playerY, BASE_HEALTH, BASE_HEALTH, "#0000FF", now, { kind: "player", color: "#666" }); // Demo player
-    drawBot(context, enemyX, enemyY, 200, 200, "#FF0000", now, { kind: "enemy", color: "#666" }); // Demo enemy
     drawBot(context, playerX, playerY, BASE_HEALTH, BASE_HEALTH, "#0000FF", now, { kind: "player", key: "hacker", facing: 1, color: "#666" }); // Demo player
     drawBot(context, enemyX, enemyY, 200, 200, "#FF0000", now, { kind: "enemy", key: "sawblade", facing: -1, color: "#666" }); // Demo enemy
     return;
@@ -1406,7 +1404,6 @@ function getImage(actor) {
   if (!filename) return null;
 
   const img = new Image();
-  img.src = `./compressed-images/${filename}`;
   const paths = [
     `./compressed-images/${filename}`,
     `../compressed-images/${filename}`,
