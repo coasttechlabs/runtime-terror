@@ -1473,10 +1473,6 @@ function drawBot(context, x, y, health, maxHealth, identityColor, now, actor) {
     context.stroke();
   }
 
-  // Identity Square (Blue = You, Red = Opponent)
-  context.fillStyle = identityColor;
-  context.fillRect(-8, -8, 16, 16);
-
   if (actor?.berserkState) {
     context.strokeStyle = "#ffd24d";
     context.lineWidth = 3;
