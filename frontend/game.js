@@ -18,6 +18,8 @@ const BASE_PLAYER_COOLDOWN = 1.6;
 const BASE_MOVE_SPEED = 40;
 const MATCH_POLL_MS = 900;
 const MATCH_INPUT_MS = 140;
+const FRIEND_INTERPOLATION = 0.18;
+const FRIEND_RECONCILE = 0.22;
 
 const MODULES = [
   { key: "damage", name: "Damage Module", baseBonus: 7.5, format: (value) => `+${value}% damage` },
@@ -164,6 +166,7 @@ let currentMatchId = new URLSearchParams(window.location.search).get("match") ||
 let currentMode = currentMatchId ? "friend" : "solo";
 let fireNonce = 0;
 let abilityNonce = 0;
+let lastArenaFrameAt = 0;
 const inputState = {
   up: false,
   down: false,
@@ -263,17 +266,53 @@ function friendMatchTitle(match) {
   return `${match.playerAUsername || "Player A"} vs ${match.playerBUsername || "Player B"}`;
 }
 
+function cloneActor(actor) {
+  return actor ? JSON.parse(JSON.stringify(actor)) : null;
+}
+
+function copyActorState(target, source) {
+  if (!target || !source) return source;
+  const next = { ...target };
+  Object.assign(next, cloneActor(source));
+  return next;
+}
+
+function updateRenderedActorsFromServer(self, opponent) {
+  if (!battle?.playerRender || !battle?.enemyRender) {
+    battle.playerRender = cloneActor(self);
+    battle.enemyRender = cloneActor(opponent);
+    return;
+  }
+
+  const previousPlayer = battle.playerRender;
+  const previousEnemy = battle.enemyRender;
+  battle.playerRender = copyActorState(previousPlayer, self);
+  battle.enemyRender = copyActorState(previousEnemy, opponent);
+
+  battle.playerRender.x = previousPlayer.x;
+  battle.playerRender.y = previousPlayer.y;
+  battle.playerRender.facing = previousPlayer.facing;
+
+  battle.enemyRender.displayX = previousEnemy.displayX ?? previousEnemy.x;
+  battle.enemyRender.displayY = previousEnemy.displayY ?? previousEnemy.y;
+  battle.enemyRender.x = previousEnemy.x;
+  battle.enemyRender.y = previousEnemy.y;
+  battle.enemyRender.facing = previousEnemy.facing;
+}
+
 function updateFriendBattleFromMatch(match) {
   if (!match?.snapshot?.players || !currentUser) return;
   const players = match.snapshot.players;
   const self = players[currentUser.uid];
   const opponent = Object.values(players).find((entry) => entry.uid !== currentUser.uid);
   if (!self || !opponent) return;
+  const nextBattle = battle?.matchId === match.id ? battle : {};
   battle = {
+    ...nextBattle,
     mode: "friend",
     matchId: match.id,
-    player: self,
-    enemy: opponent,
+    player: cloneActor(self),
+    enemy: cloneActor(opponent),
     enemyBlueprint: {
       bot: {
         attackName: opponent.attackName || opponent.name,
@@ -282,6 +321,7 @@ function updateFriendBattleFromMatch(match) {
     logLines: Array.isArray(match.snapshot.logs) ? match.snapshot.logs : [],
     rawMatch: match,
   };
+  updateRenderedActorsFromServer(self, opponent);
   lastBattleReport = battle.logLines.join("\n");
   syncBattleUi();
 }
@@ -722,6 +762,67 @@ function moveActor(actor, dx, dy, delta, multiplier = 1) {
   actor.y = clamp(nextY, 120, 650);
 }
 
+function reconcileToward(current, target, factor) {
+  return current + (target - current) * factor;
+}
+
+function tickFriendPrediction(delta) {
+  if (currentMode !== "friend" || !battle?.playerRender || !battle?.enemyRender || !battle.player || !battle.enemy) {
+    return;
+  }
+
+  const local = battle.playerRender;
+  const authoritativeLocal = battle.player;
+  const remote = battle.enemyRender;
+  const authoritativeRemote = battle.enemy;
+
+  local.health = authoritativeLocal.health;
+  local.maxHealth = authoritativeLocal.maxHealth;
+  local.cooldownDuration = authoritativeLocal.cooldownDuration;
+  local.cooldownRemaining = Math.max(0, local.cooldownRemaining - delta);
+  local.freezeFor = authoritativeLocal.freezeFor;
+  local.disableFor = authoritativeLocal.disableFor;
+  local.armorBreak = authoritativeLocal.armorBreak;
+  local.plasmaDebuffFor = authoritativeLocal.plasmaDebuffFor;
+  if (local.berserkState?.key === "queued") {
+    local.berserkState.remaining -= delta;
+    if (local.berserkState.remaining <= 0) {
+      local.berserkState = null;
+    }
+  } else {
+    local.berserkState = authoritativeLocal.berserkState;
+  }
+
+  if (!isDisabled(local)) {
+    const dx = (inputState.right ? 1 : 0) - (inputState.left ? 1 : 0);
+    const dy = (inputState.down ? 1 : 0) - (inputState.up ? 1 : 0);
+    if (dx !== 0 || dy !== 0) {
+      moveActor(local, dx, dy, delta);
+      if (dx !== 0) {
+        local.facing = dx > 0 ? 1 : -1;
+      }
+    } else {
+      local.x = reconcileToward(local.x, authoritativeLocal.x, FRIEND_RECONCILE);
+      local.y = reconcileToward(local.y, authoritativeLocal.y, FRIEND_RECONCILE);
+    }
+  }
+
+  remote.health = authoritativeRemote.health;
+  remote.maxHealth = authoritativeRemote.maxHealth;
+  remote.cooldownDuration = authoritativeRemote.cooldownDuration;
+  remote.cooldownRemaining = authoritativeRemote.cooldownRemaining;
+  remote.freezeFor = authoritativeRemote.freezeFor;
+  remote.disableFor = authoritativeRemote.disableFor;
+  remote.armorBreak = authoritativeRemote.armorBreak;
+  remote.plasmaDebuffFor = authoritativeRemote.plasmaDebuffFor;
+  remote.berserkState = authoritativeRemote.berserkState;
+  remote.displayX = reconcileToward(remote.displayX ?? authoritativeRemote.x, authoritativeRemote.x, FRIEND_INTERPOLATION);
+  remote.displayY = reconcileToward(remote.displayY ?? authoritativeRemote.y, authoritativeRemote.y, FRIEND_INTERPOLATION);
+  remote.x = remote.displayX;
+  remote.y = remote.displayY;
+  remote.facing = authoritativeRemote.facing;
+}
+
 function isDisabled(actor) {
   return actor.freezeFor > 0 || actor.disableFor > 0;
 }
@@ -882,6 +983,10 @@ function activateBerserk(actor, opponent, key) {
 function handlePlayerFire() {
   if (currentMode === "friend") {
     fireNonce += 1;
+    if (battle?.playerRender) {
+      battle.playerRender.cooldownRemaining = getEffectiveCooldown(battle.playerRender);
+      syncBattleUi();
+    }
     return;
   }
   if (!battle) return;
@@ -900,6 +1005,10 @@ function handlePlayerFire() {
 function handlePlayerBerserk() {
   if (currentMode === "friend") {
     abilityNonce += 1;
+    if (battle?.playerRender) {
+      battle.playerRender.berserkState = battle.playerRender.berserkState || { key: "queued", name: "Activating...", remaining: 0.35 };
+      syncBattleUi();
+    }
     return;
   }
   if (!battle) return;
@@ -1055,7 +1164,9 @@ function syncBattleUi() {
     return;
   }
 
-  const { player, enemy, enemyBlueprint } = battle;
+  const player = currentMode === "friend" && battle.playerRender ? battle.playerRender : battle.player;
+  const enemy = currentMode === "friend" && battle.enemyRender ? battle.enemyRender : battle.enemy;
+  const { enemyBlueprint } = battle;
   setText(dom.enemyName, enemy.name);
   setText(dom.playerHealthText, `${roundNumber(player.health)} / ${roundNumber(player.maxHealth)}`);
   setText(dom.enemyHealthText, `${roundNumber(enemy.health)} / ${roundNumber(enemy.maxHealth)}`);
@@ -1223,8 +1334,8 @@ function renderArena() {
     return;
   }
 
-  const player = battle.player;
-  const enemy = battle.enemy;
+  const player = currentMode === "friend" && battle.playerRender ? battle.playerRender : battle.player;
+  const enemy = currentMode === "friend" && battle.enemyRender ? battle.enemyRender : battle.enemy;
   const playerX = player.x * (width / 1280);
   const enemyX = enemy.x * (width / 1280);
   const playerY = player.y * (height / 720);
@@ -1386,6 +1497,12 @@ function setInput(eventCode, pressed) {
 }
 
 function tickArenaFrame() {
+  const now = performance.now();
+  const delta = lastArenaFrameAt ? Math.min((now - lastArenaFrameAt) / 1000, 0.05) : 0;
+  lastArenaFrameAt = now;
+  if (currentMode === "friend" && delta > 0) {
+    tickFriendPrediction(delta);
+  }
   renderArena();
   arenaFrame = window.requestAnimationFrame(tickArenaFrame);
 }
