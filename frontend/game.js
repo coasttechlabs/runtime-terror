@@ -6,6 +6,12 @@ let currentStorageKey = STORAGE_KEY_BASE;
 const TICK_MS = 16;
 const BASE_HEALTH = 250;
 const BASE_MOVE_SPEED = 100;
+const STORAGE_KEY = "runtime-terror-solo-save-v1";
+const TICK_MS = 16;
+const BASE_HEALTH = 100;
+const BASE_PLAYER_DAMAGE = 22;
+const BASE_PLAYER_COOLDOWN = 1.6;
+const BASE_MOVE_SPEED = 40;
 
 const MODULES = [
   { key: "damage", name: "Damage Module", baseBonus: 7.5, format: (value) => `+${value}% damage` },
@@ -446,6 +452,7 @@ function createActor(kind, config) {
     abilityCooldownRemaining: 0,
     freezeFor: 0,
     disableFor: 0,
+    hackCooldown: 0,
     burnFor: 0,
     burnDamage: 0,
     armorBreak: 0,
@@ -694,6 +701,7 @@ function tickBattle() {
 function stepActorTimers(actor, opponent, delta) {
   actor.freezeFor = Math.max(0, actor.freezeFor - delta);
   actor.disableFor = Math.max(0, actor.disableFor - delta);
+  actor.hackCooldown = Math.max(0, actor.hackCooldown - delta);
   actor.plasmaDebuffFor = Math.max(0, actor.plasmaDebuffFor - delta);
   actor.strikerModeFor = Math.max(0, actor.strikerModeFor - delta);
   actor.goldenModeFor = Math.max(0, actor.goldenModeFor - delta);
@@ -857,16 +865,23 @@ function sawbladeAttack(attacker, defender) {
 function hackerAbility(attacker, defender) {
   const damage = attacker.abilityDamage + (attacker.unique6 ? 20 : 0);
   const disableTime = 5 + (attacker.unique6 ? 2 : 0);
+function hackerAttack(attacker, defender) {
+  const damage = attacker.shotDamage + (attacker.unique6 ? 20 : 0);
   applyDamage(defender, damage, "hack spike", attacker.name, { projectile: false });
-  defender.disableFor = Math.max(defender.disableFor, disableTime);
-  pushLog(`${defender.name} is hacked for ${disableTime.toFixed(0)} seconds.`);
 
-  if (attacker.unique7 && Math.random() <= 0.75) {
-    const chainedTime = roundNumber(disableTime / 1.5);
-    const chainedDamage = roundNumber(damage / 1.5);
-    defender.disableFor = Math.max(defender.disableFor, chainedTime);
-    applyDamage(defender, chainedDamage, "rehack", attacker.name, { projectile: false });
-    pushLog("Hyper Efficient Coding triggered a weaker re-hack.");
+  if (attacker.hackCooldown <= 0) {
+    const disableTime = 5 + (attacker.unique6 ? 2 : 0);
+    defender.disableFor = Math.max(defender.disableFor, disableTime);
+    attacker.hackCooldown = disableTime + 3; // Cooldown to prevent permanent stuns
+    pushLog(`${defender.name} is hacked for ${disableTime.toFixed(0)} seconds.`);
+
+    if (attacker.unique7 && Math.random() <= 0.75) {
+      const chainedTime = roundNumber(disableTime / 1.5);
+      const chainedDamage = roundNumber(damage / 1.5);
+      defender.disableFor = Math.max(defender.disableFor, chainedTime);
+      applyDamage(defender, chainedDamage, "rehack", attacker.name, { projectile: false });
+      pushLog("Hyper Efficient Coding triggered a weaker re-hack.");
+    }
   }
 }
 
