@@ -21,7 +21,8 @@ const BASE_PLAYER_DAMAGE = 22;
 const BASE_PLAYER_COOLDOWN = 1.6;
 const BASE_MOVE_SPEED = 40;
 const MATCH_FALLBACK_POLL_MS = 1800;
-const MATCH_INPUT_MS = 65;
+const MATCH_INPUT_THROTTLE_MS = 65;
+const MATCH_HEARTBEAT_MS = 4000;
 const FRIEND_INTERPOLATION = 0.18;
 const FRIEND_RECONCILE = 0.22;
 
@@ -165,7 +166,7 @@ let autoAdvanceTimeout = null;
 let currentUser = null;
 let activeIdToken = "";
 let matchPollIntervalId = null;
-let matchInputIntervalId = null;
+let matchHeartbeatIntervalId = null;
 let matchUnsubscribe = null;
 let currentMatchId = new URLSearchParams(window.location.search).get("match") || "";
 let currentMode = currentMatchId ? "friend" : "solo";
@@ -175,6 +176,7 @@ let lastArenaFrameAt = 0;
 let lastFriendInputSentAt = 0;
 let pendingFriendInputTimeoutId = null;
 let friendRealtimeReady = false;
+let lastFriendInputSignature = "";
 const inputState = {
   up: false,
   down: false,
@@ -267,15 +269,16 @@ function clearFriendMatchTimers() {
     window.clearInterval(matchPollIntervalId);
     matchPollIntervalId = null;
   }
-  if (matchInputIntervalId) {
-    window.clearInterval(matchInputIntervalId);
-    matchInputIntervalId = null;
+  if (matchHeartbeatIntervalId) {
+    window.clearInterval(matchHeartbeatIntervalId);
+    matchHeartbeatIntervalId = null;
   }
   if (matchUnsubscribe) {
     matchUnsubscribe();
     matchUnsubscribe = null;
   }
   friendRealtimeReady = false;
+  lastFriendInputSignature = "";
 }
 
 function friendMatchTitle(match) {
@@ -385,9 +388,9 @@ function subscribeToFriendMatch() {
       friendRealtimeReady = true;
       updateFriendBattleFromMatch(normalized);
       if (normalized.status !== "active") {
-        if (matchInputIntervalId) {
-          window.clearInterval(matchInputIntervalId);
-          matchInputIntervalId = null;
+        if (matchHeartbeatIntervalId) {
+          window.clearInterval(matchHeartbeatIntervalId);
+          matchHeartbeatIntervalId = null;
         }
       }
     },
@@ -397,7 +400,7 @@ function subscribeToFriendMatch() {
   );
 }
 
-async function sendFriendInput() {
+function buildFriendInputPayload() {
   if (!currentMatchId || !currentUser || currentMode !== "friend") return;
   const canvas = dom.arenaCanvas;
   let aimX = inputState.aimX;
@@ -409,43 +412,52 @@ async function sendFriendInput() {
       aimY = ((inputState.aimY || rect.height / 2) / rect.height) * 720;
     }
   }
+  return {
+    up: inputState.up,
+    down: inputState.down,
+    left: inputState.left,
+    right: inputState.right,
+    aimX,
+    aimY,
+    fireNonce,
+    abilityNonce,
+  };
+}
+
+async function sendFriendInput({ force = false } = {}) {
+  if (!currentMatchId || !currentUser || currentMode !== "friend") return;
+  const body = buildFriendInputPayload();
+  const signature = JSON.stringify(body);
+  if (!force && signature === lastFriendInputSignature) return;
   const payload = await apiRequest(`/matches/${encodeURIComponent(currentMatchId)}/actions`, {
     method: "POST",
-    body: {
-      up: inputState.up,
-      down: inputState.down,
-      left: inputState.left,
-      right: inputState.right,
-      aimX,
-      aimY,
-      fireNonce,
-      abilityNonce,
-    },
+    body,
   });
   if (payload?.match) {
     updateFriendBattleFromMatch(payload.match);
   }
+  lastFriendInputSignature = signature;
   lastFriendInputSentAt = performance.now();
 }
 
-function scheduleFriendInputSend(immediate = false) {
+function scheduleFriendInputSend(immediate = false, force = false) {
   if (currentMode !== "friend" || !currentUser || !currentMatchId) return;
   if (immediate) {
     if (pendingFriendInputTimeoutId) {
       window.clearTimeout(pendingFriendInputTimeoutId);
       pendingFriendInputTimeoutId = null;
     }
-    sendFriendInput().catch((error) => {
+    sendFriendInput({ force }).catch((error) => {
       console.error("Friend match input failed:", error);
     });
     return;
   }
   if (pendingFriendInputTimeoutId) return;
   const elapsed = performance.now() - lastFriendInputSentAt;
-  const delay = Math.max(0, MATCH_INPUT_MS - elapsed);
+  const delay = Math.max(0, MATCH_INPUT_THROTTLE_MS - elapsed);
   pendingFriendInputTimeoutId = window.setTimeout(() => {
     pendingFriendInputTimeoutId = null;
-    sendFriendInput().catch((error) => {
+    sendFriendInput({ force }).catch((error) => {
       console.error("Friend match input failed:", error);
     });
   }, delay);
@@ -460,9 +472,9 @@ async function startFriendMatchMode() {
   clearFriendMatchTimers();
   subscribeToFriendMatch();
   await fetchFriendMatch();
-  matchInputIntervalId = window.setInterval(() => {
-    scheduleFriendInputSend(false);
-  }, MATCH_INPUT_MS);
+  matchHeartbeatIntervalId = window.setInterval(() => {
+    scheduleFriendInputSend(true, true);
+  }, MATCH_HEARTBEAT_MS);
   matchPollIntervalId = window.setInterval(() => {
     if (friendRealtimeReady) return;
     fetchFriendMatch().catch((error) => {
@@ -1577,11 +1589,20 @@ function resizeArenaCanvas() {
 
 function setInput(eventCode, pressed) {
   let changed = false;
-  if (eventCode === "KeyW" || eventCode === "ArrowUp") inputState.up = pressed;
-  if (eventCode === "KeyS" || eventCode === "ArrowDown") inputState.down = pressed;
-  if (eventCode === "KeyA" || eventCode === "ArrowLeft") inputState.left = pressed;
-  if (eventCode === "KeyD" || eventCode === "ArrowRight") inputState.right = pressed;
-  if (eventCode === "KeyW" || eventCode === "ArrowUp" || eventCode === "KeyS" || eventCode === "ArrowDown" || eventCode === "KeyA" || eventCode === "ArrowLeft" || eventCode === "KeyD" || eventCode === "ArrowRight") {
+  if ((eventCode === "KeyW" || eventCode === "ArrowUp") && inputState.up !== pressed) {
+    inputState.up = pressed;
+    changed = true;
+  }
+  if ((eventCode === "KeyS" || eventCode === "ArrowDown") && inputState.down !== pressed) {
+    inputState.down = pressed;
+    changed = true;
+  }
+  if ((eventCode === "KeyA" || eventCode === "ArrowLeft") && inputState.left !== pressed) {
+    inputState.left = pressed;
+    changed = true;
+  }
+  if ((eventCode === "KeyD" || eventCode === "ArrowRight") && inputState.right !== pressed) {
+    inputState.right = pressed;
     changed = true;
   }
   if (changed && currentMode === "friend") {
