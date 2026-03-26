@@ -73,13 +73,13 @@ const PLAYER_BOT_TYPES = [
   {
     key: "hacker",
     name: "Hacking Bot",
-    damage: 20, // Bullet damage
+    damage: 12, // Bullet damage
     abilityDamage: 40,
     cooldown: 1, // 1 second delay
     color: "#1E90FF", // Blue
     abilityName: "System Hack",
     abilityCooldown: 10,
-    maxAbilityUses: 2,
+    maxAbilityUses: 1,
     attackName: "bullet",
     attack: playerAttack, // Normal shot
     ability: hackerAbility,
@@ -141,18 +141,18 @@ const BOT_TYPES = [
   {
     key: "hacker",
     name: "Hacking Bot",
-    damage: 20,
+    damage: 12,
     abilityDamage: 40,
     cooldown: 1,
     color: "#1E90FF",
     attackName: "bullet",
     abilityName: "System Hack",
     abilityCooldown: 10,
-    maxAbilityUses: 2,
+    maxAbilityUses: 1,
     unique6: "HyperThreadingTechnology",
     unique6Description: "Hack lasts 2 more seconds and deals 20 more damage.",
     unique7: "Hyper Efficient Coding",
-    unique7Description: "75% chance to chain a weaker second hack.",
+    unique7Description: "Allows a 75% chance for a re-hack on the enemy, hacking twice, though the second hack is 1.5x less longer, 1.5x less damage",
     attack: playerAttack, // Uses bullets as primary
     ability: hackerAbility,
   },
