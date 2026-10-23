@@ -2,6 +2,9 @@ version = 1
 revision = 3
 requires-python = ">=3.14"
 
+[manifest]
+overrides = [{ name = "certifi", specifier = ">=2026.10.19" }]
+
 [[package]]
 name = "runtime-terror"
 version = "0.1.0"
